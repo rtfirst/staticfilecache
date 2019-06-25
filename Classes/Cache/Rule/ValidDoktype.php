@@ -8,6 +8,7 @@ declare(strict_types = 1);
 
 namespace SFC\Staticfilecache\Cache\Rule;
 
+use TYPO3\CMS\Extbase\Utility\DebuggerUtility;
 use TYPO3\CMS\Frontend\Controller\TypoScriptFrontendController;
 use TYPO3\CMS\Frontend\Page\PageRepository;
 
@@ -31,12 +32,17 @@ class ValidDoktype extends AbstractRule
             PageRepository::DOKTYPE_SYSFOLDER,
             PageRepository::DOKTYPE_RECYCLER,
         ];
-        $currentType = (int)$frontendController->page['doktype'];
-        if (\in_array($currentType, $ignoreTypes, true)) {
-            $explanation[__CLASS__] = 'The Page doktype ' . $currentType . ' is one of the following not allowed numbers: ' . \implode(
-                ', ',
-                $ignoreTypes
-            );
+
+        if ($frontendController->page) {
+            $currentType = (int)$frontendController->page['doktype'];
+            if (\in_array($currentType, $ignoreTypes, true)) {
+                $explanation[__CLASS__] = 'The Page doktype ' . $currentType . ' is one of the following not allowed numbers: ' . \implode(
+                    ', ',
+                    $ignoreTypes
+                );
+                $skipProcessing = true;
+            }
+        } else {
             $skipProcessing = true;
         }
     }

@@ -72,6 +72,10 @@ class ForceStaticCache extends AbstractRule
      */
     protected function isForceCacheUri(TypoScriptFrontendController $frontendController, string $uri): bool
     {
+        if (!$frontendController->page) {
+            return false;
+        }
+
         $signalSlotDispatcher = GeneralUtility::makeInstance(Dispatcher::class);
         $forceStatic = (bool)$frontendController->page['tx_staticfilecache_cache_force'];
         $params = [

@@ -226,7 +226,6 @@ class StaticFileCache extends StaticFileCacheObject
             return $this->signalDispatcher->dispatch(__CLASS__, $signalName, $arguments);
         } catch (\Exception $exception) {
             $this->logger->error('Problems by calling signal: ' . $exception->getMessage() . ' / ' . $exception->getFile() . ':' . $exception->getLine());
-
             return $arguments;
         }
     }
