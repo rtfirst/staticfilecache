@@ -28,6 +28,20 @@ use TYPO3\CMS\Core\Utility\PathUtility;
  */
 class StaticFileBackend extends StaticDatabaseBackend implements TransientBackendInterface
 {
+    protected function hash(string $data): string
+    {
+        return sha1($data);
+    }
+
+    protected function serialize($data): string
+    {
+        return \json_encode($data);
+    }
+
+    protected function unserialize(string $string)
+    {
+        return \json_decode($string, true);
+    }
 
     /**
      * Saves data in the cache.
@@ -47,16 +61,25 @@ class StaticFileBackend extends StaticDatabaseBackend implements TransientBacken
         $databaseData = [
             'created' => $time,
             'expires' => ($time + $realLifetime),
+            'url' => $entryIdentifier
         ];
+
+        // aware of table overbloat
+        $entryIdentifierHash = $this->hash($entryIdentifier);
+        parent::remove($entryIdentifierHash);
+
         if (\in_array('explanation', $tags, true)) {
             $databaseData['explanation'] = $data;
-            parent::set($entryIdentifier, \serialize($databaseData), $tags, $realLifetime);
+            parent::set($entryIdentifierHash, $this->serialize($databaseData), $tags, $realLifetime);
 
             return;
         }
 
-        $this->logger->debug('SFC Set', [$entryIdentifier, $tags, $lifetime]);
+        $this->logger->debug('SFC Set', [$entryIdentifierHash . '(' . $entryIdentifier . ')', $tags, $lifetime]);
         $fileName = $this->getCacheFilename($entryIdentifier);
+        if ($fileName === '') {
+            return;
+        }
 
         try {
             // Create dir
@@ -67,7 +90,7 @@ class StaticFileBackend extends StaticDatabaseBackend implements TransientBacken
 
             // call set in front of the generation, because the set method
             // of the DB backend also call remove (this remove do not remove the folder already created above)
-            parent::set($entryIdentifier, \serialize($databaseData), $tags, $realLifetime);
+            parent::set($entryIdentifierHash, $this->serialize($databaseData), $tags, $realLifetime);
 
             $this->removeStaticFiles($entryIdentifier);
 
@@ -87,15 +110,16 @@ class StaticFileBackend extends StaticDatabaseBackend implements TransientBacken
      */
     public function get($entryIdentifier)
     {
+        $entryIdentifierHash = $this->hash($entryIdentifier);
         if (!$this->has($entryIdentifier)) {
             return false;
         }
-        $result = parent::get($entryIdentifier);
+        $result = parent::get($entryIdentifierHash);
         if (!\is_string($result)) {
             return false;
         }
 
-        return \unserialize($result);
+        return $this->unserialize($result);
     }
 
     /**
@@ -107,7 +131,8 @@ class StaticFileBackend extends StaticDatabaseBackend implements TransientBacken
      */
     public function has($entryIdentifier)
     {
-        return \is_file($this->getCacheFilename($entryIdentifier)) || parent::has($entryIdentifier);
+        $entryIdentifierHash = $this->hash($entryIdentifier);
+        return ($this->getCacheFilename($entryIdentifier) !== '' && \is_file($this->getCacheFilename($entryIdentifier))) || parent::has($entryIdentifierHash);
     }
 
     /**
@@ -119,23 +144,22 @@ class StaticFileBackend extends StaticDatabaseBackend implements TransientBacken
      *
      * @return bool TRUE if (at least) an entry could be removed or FALSE if no entry was found
      */
-    public function remove($entryIdentifier)
+    public function remove($entryIdentifierHash)
     {
-        if (!$this->has($entryIdentifier)) {
+        if (!$this->has($entryIdentifierHash)) {
             return false;
         }
 
-        $this->logger->debug('SFC Remove', [$entryIdentifier]);
+        $this->logger->debug('SFC Remove', [$entryIdentifierHash]);
 
         if ($this->isBoostMode()) {
             $this->getQueue()
-                ->addIdentifier($entryIdentifier);
+                ->addIdentifier($entryIdentifierHash);
 
             return true;
         }
-
-        if ($this->removeStaticFiles($entryIdentifier)) {
-            return parent::remove($entryIdentifier);
+        if ($this->removeStaticFiles($entryIdentifierHash)) {
+            return parent::remove($entryIdentifierHash);
         }
 
         return false;
@@ -258,6 +282,13 @@ class StaticFileBackend extends StaticDatabaseBackend implements TransientBacken
      */
     protected function getCacheFilename(string $entryIdentifier): string
     {
+        if (strpos($entryIdentifier, '/') === false) {
+            $entryIdentifier = $this->getEntryIdentifierByEntryIdentifierHash($entryIdentifier);
+            if ($entryIdentifier === '') {
+                return '';
+            }
+        }
+
         $identifierBuilder = GeneralUtility::makeInstance(IdentifierBuilder::class);
         return $identifierBuilder->getCacheFilename($entryIdentifier);
     }
@@ -279,6 +310,27 @@ class StaticFileBackend extends StaticDatabaseBackend implements TransientBacken
         return $identifiers;
     }
 
+    protected function getEntryIdentifierByEntryIdentifierHash(string $entryIdentifierHash): string
+    {
+        // get entry from db...
+        if (parent::has($entryIdentifierHash)) {
+            $data = parent::get($entryIdentifierHash);
+            if (!$data) {
+                return '';
+            }
+
+            $entry = $this->unserialize($data);
+            if (!$entry) {
+                // remove corrupt entry
+                parent::remove($entryIdentifierHash);
+                return '';
+            }
+
+            return $entry['url'];
+        }
+        return '';
+    }
+
     /**
      * Remove the static files of the given identifier.
      *
@@ -289,6 +341,10 @@ class StaticFileBackend extends StaticDatabaseBackend implements TransientBacken
     protected function removeStaticFiles(string $entryIdentifier): bool
     {
         $fileName = $this->getCacheFilename($entryIdentifier);
+        if ($fileName === '') {
+            return false;
+        }
+
         $dispatchArguments = [
             'entryIdentifier' => $entryIdentifier,
             'fileName' => $fileName,
