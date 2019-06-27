@@ -12,37 +12,43 @@ class StaticFileCacheFallbackMiddleware implements MiddlewareInterface
 {
     public function process(ServerRequestInterface $request, RequestHandlerInterface $handler): ResponseInterface
     {
-        //DebuggerUtility::var_dump($request);die();
+        $possibleStaticFile = false;
         $uri = $request->getUri();
         $cacheDirectory = PATH_site . 'typo3temp/tx_staticfilecache/';
 
         $handle = true;
         if ($uri->getQuery() !== '') {
             $handle = false;
-        }
-        if ($request->getMethod() !== 'GET') {
+        } elseif ($request->getMethod() !== 'GET') {
             $handle = false;
-        }
-        if (isset($_COOKIE[$GLOBALS['TYPO3_CONF_VARS']['BE']['cookieName']])) {
+        } elseif (isset($_COOKIE[$GLOBALS['TYPO3_CONF_VARS']['BE']['cookieName']])) {
             $handle = false;
-        }
-        if (isset($_COOKIE['staticfilecache']) && $_COOKIE['staticfilecache'] === 'fe_typo_user_logged_in') {
+        } elseif (isset($_COOKIE['staticfilecache']) && $_COOKIE['staticfilecache'] === 'fe_typo_user_logged_in') {
             $handle = false;
-        }
-        $possibleStaticFile = realpath($cacheDirectory . $uri->getScheme() . DIRECTORY_SEPARATOR . $uri->getHost() . DIRECTORY_SEPARATOR . ($uri->getPort() ?: '80') . $uri->getPath() . DIRECTORY_SEPARATOR . 'index.html');
-        $headers = ['Content-Type' => 'text/html; charset=utf-8'];
-        foreach ($request->getHeader('accept-encoding') as $acceptEncoding) {
-            if (strpos($acceptEncoding, 'gzip') !== false) {
-                $headers['Content-Encoding'] = 'gzip';
-                $possibleStaticFile .= '.gz';
-                break;
+        } else {
+            $possibleStaticFile = realpath($cacheDirectory . $uri->getScheme() . DIRECTORY_SEPARATOR . $uri->getHost() . DIRECTORY_SEPARATOR . ($uri->getPort() ?: '80') . $uri->getPath() . DIRECTORY_SEPARATOR . 'index.html');
+
+            if (false === $possibleStaticFile) {
+                $handle = false;
+            } else {
+                // Check if we can support compressed files
+                $headers = ['Content-Type' => 'text/html; charset=utf-8'];
+                foreach ($request->getHeader('accept-encoding') as $acceptEncoding) {
+                    if (strpos($acceptEncoding, 'gzip') !== false) {
+                        $headers['Content-Encoding'] = 'gzip';
+                        $possibleStaticFile .= '.gz';
+                        break;
+                    }
+                }
             }
         }
-        if (false === file_exists($possibleStaticFile) && false === is_readable($possibleStaticFile)) {
-            $handle = false;
-        }
+
         // check if the file really is part of the cache directory
-        if (strpos($possibleStaticFile, $cacheDirectory) !== 0) {
+        if ($possibleStaticFile === false) {
+            $handle = false;
+        } elseif (false === file_exists($possibleStaticFile) && false === is_readable($possibleStaticFile)) {
+            $handle = false;
+        } elseif (strpos($possibleStaticFile, $cacheDirectory) !== 0) {
             $handle = false;
         }
 
