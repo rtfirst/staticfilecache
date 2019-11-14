@@ -22,7 +22,7 @@ class CacheCommandController extends AbstractCommandController
      */
     public function removeExpiredPagesCommand()
     {
-        CacheUtility::getCache()
+        CacheUtility::getInstance()->getCache()
             ->collectGarbage();
     }
 
@@ -38,21 +38,12 @@ class CacheCommandController extends AbstractCommandController
     }
 
     /**
-     * Run the cache boost queue
-     */
-    public function cleanupCacheBoostQueueCommand()
-    {
-        $queue = GeneralUtility::makeInstance(QueueManager::class);
-        $queue->cleanup();
-    }
-
-    /**
      * Flush the cache
      * If the boost mode is active, all pages are recrawlt
      */
     public function flushCacheCommand()
     {
-        CacheUtility::getCache()
+        CacheUtility::getInstance()->getCache()
             ->flush();
     }
 }

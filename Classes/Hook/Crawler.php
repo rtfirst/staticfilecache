@@ -38,7 +38,7 @@ class Crawler
         ) {
             $pageId = $GLOBALS['TSFE']->id;
             if (is_numeric($pageId)) {
-                CacheUtility::clearByPageId($pageId);
+                CacheUtility::getInstance()->clearByPageId($pageId);
                 $pObj->applicationData['tx_crawler']['log'][] = 'EXT:staticfilecache cleared static file';
             } else {
                 $pObj->applicationData['tx_crawler']['log'][] = 'EXT:staticfilecache skipped';

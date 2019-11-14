@@ -10,11 +10,11 @@ CREATE TABLE pages (
 # Table structure for table 'tx_staticfilecache_queue'
 #
 CREATE TABLE tx_staticfilecache_queue (
-	uid int(11) NOT NULL auto_increment,
-	cache_url tinytext NOT NULL,
+	identifier varchar(255) DEFAULT '' NOT NULL,
+	cache_url text NOT NULL,
 	page_uid int(11) DEFAULT '0' NOT NULL,
 	invalid_date int(11) DEFAULT '0' NOT NULL,
 	call_date int(11) DEFAULT '0' NOT NULL,
 	call_result tinytext NOT NULL,
-	PRIMARY KEY (uid)
+	PRIMARY KEY (identifier)
 );

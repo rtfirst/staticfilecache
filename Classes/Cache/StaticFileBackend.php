@@ -8,6 +8,7 @@
 namespace SFC\Staticfilecache\Cache;
 
 use SFC\Staticfilecache\QueueManager;
+use SFC\Staticfilecache\Utility\CacheUtility;
 use TYPO3\CMS\Core\Database\DatabaseConnection;
 use TYPO3\CMS\Core\Utility\GeneralUtility;
 use TYPO3\CMS\Core\Utility\PathUtility;
@@ -66,7 +67,7 @@ class StaticFileBackend extends AbstractBackend
             GeneralUtility::mkdir_deep($cacheDir);
         }
 
-        $this->removeStaticFiles($entryIdentifier);
+        CacheUtility::getInstance()->removeStaticFiles($entryIdentifier);
 
         // normal
         GeneralUtility::writeFile($fileName, $data);
@@ -147,7 +148,7 @@ class StaticFileBackend extends AbstractBackend
         if (!$this->has($entryIdentifier)) {
             return null;
         }
-        return unserialize(parent::get($entryIdentifier));
+        return unserialize(parent::get($entryIdentifier), false);
     }
 
     /**
@@ -183,7 +184,7 @@ class StaticFileBackend extends AbstractBackend
             return true;
         }
 
-        $this->removeStaticFiles($entryIdentifier);
+        CacheUtility::getInstance()->removeStaticFiles($entryIdentifier);
         return parent::remove($entryIdentifier);
     }
 
@@ -194,7 +195,6 @@ class StaticFileBackend extends AbstractBackend
      */
     public function flush()
     {
-
         if ((boolean)$this->configuration->get('clearCacheForAllDomains') === false) {
             $this->flushByTag('sfc_domain_' . str_replace('.', '_', GeneralUtility::getIndpEnv('TYPO3_HOST_ONLY')));
             return;
@@ -206,6 +206,7 @@ class StaticFileBackend extends AbstractBackend
             foreach ($identifiers as $item) {
                 $queue->addIdentifier($item['identifier']);
             }
+            parent::flush();
             return;
         }
 
@@ -239,7 +240,7 @@ class StaticFileBackend extends AbstractBackend
         }
         $identifiers = $this->findIdentifiersByTag($tag);
         foreach ($identifiers as $identifier) {
-            $this->removeStaticFiles($identifier);
+            CacheUtility::getInstance()->removeStaticFiles($identifier);
         }
         parent::flushByTag($tag);
     }
@@ -254,27 +255,7 @@ class StaticFileBackend extends AbstractBackend
         $cacheEntryIdentifiers = $this->getIdentifiers('expires < ' . $GLOBALS['EXEC_TIME']);
         parent::collectGarbage();
         foreach ($cacheEntryIdentifiers as $row) {
-            $this->removeStaticFiles($row['identifier']);
-        }
-    }
-
-    /**
-     * Remove the static files of the given identifier
-     *
-     * @param $entryIdentifier
-     */
-    protected function removeStaticFiles($entryIdentifier)
-    {
-        $fileName = $this->getCacheFilename($entryIdentifier);
-        $files = [
-            $fileName,
-            $fileName . '.gz',
-            PathUtility::pathinfo($fileName, PATHINFO_DIRNAME) . '/.htaccess'
-        ];
-        foreach ($files as $file) {
-            if (is_file($file)) {
-                unlink($file);
-            }
+            CacheUtility::getInstance()->removeStaticFiles($row['identifier']);
         }
     }
 
@@ -308,7 +289,7 @@ class StaticFileBackend extends AbstractBackend
     {
         // @todo DB Migration for 8.x
         return (array)$this->getDatabaseConnection()
-            ->exec_SELECTgetRows('DISTINCT identifier', $this->cacheTable, 'expires < ' . $GLOBALS['EXEC_TIME']);
+            ->exec_SELECTgetRows('identifier', $this->cacheTable, $where);
     }
 
     /**

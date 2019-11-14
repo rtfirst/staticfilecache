@@ -73,7 +73,7 @@ class CacheModule extends AbstractFunctionModule
     protected function renderModule(BrowseTreeView $tree)
     {
         $rows = [];
-        $cache = CacheUtility::getCache();
+        $cache = CacheUtility::getInstance()->getCache();
 
         foreach ($tree->tree as $row) {
             $cacheEntries = $cache->getByTag('sfc_pageId_' . $row['row']['uid']);
@@ -128,8 +128,7 @@ class CacheModule extends AbstractFunctionModule
         $action = GeneralUtility::_GP('ACTION');
 
         if (isset($action['removeExpiredPages']) && (bool)$action['removeExpiredPages']) {
-            CacheUtility::getCache()
-                ->collectGarbage();
+            CacheUtility::getInstance()->getCache()->collectGarbage();
         }
     }
 

@@ -37,17 +37,18 @@ class QueueManager implements SingletonInterface
     public function run($limitItems = 0)
     {
         define('SFC_QUEUE_WORKER', true);
-        $dbConnection = $this->getDatabaseConnection();
         $limit = $limitItems > 0 ? (int)$limitItems : '';
-        $runEntries = $dbConnection->exec_SELECTgetRows('*', self::QUEUE_TABLE, 'call_date=0', '', '', $limit);
 
-        if (empty($runEntries)) {
-            return;
-        }
-
-        foreach ($runEntries as $runEntry) {
+        $dbConnection = $this->getDatabaseConnection();
+        $runEntriesResult = $dbConnection->sql_query($dbConnection->SELECTquery('*', self::QUEUE_TABLE, '', '', '', $limit));
+        while ($runEntry = $dbConnection->sql_fetch_assoc($runEntriesResult)) {
             $this->runSingleRequest($runEntry);
         }
+    }
+
+    public function count(): int
+    {
+        return (int)$this->getDatabaseConnection()->exec_SELECTcountRows('*', self::QUEUE_TABLE);
     }
 
     /**
@@ -57,33 +58,31 @@ class QueueManager implements SingletonInterface
      */
     protected function runSingleRequest(array $runEntry)
     {
-        $dbConnection = $this->getDatabaseConnection();
         try {
+            // i thinks it is ok to remove the file first and if the curl does not proceed the cache is invalidated anyway also it's not warmed up (failproof)
+            CacheUtility::getInstance()->removeStaticFiles($runEntry['cache_url']);
             $client = $this->getCallableClient(parse_url($runEntry['cache_url'], PHP_URL_HOST));
             $response = $client->get($runEntry['cache_url']);
             $statusCode = $response->getStatusCode();
         } catch (\Exception $ex) {
             $statusCode = 900;
         }
-        $data = [
-            'call_date'   => time(),
-            'call_result' => $statusCode,
-        ];
 
         if ($statusCode !== 200) {
             // Call the flush, if the page is not accessable
-            $cache = CacheUtility::getCache();
+            $cache = CacheUtility::getInstance()->getCache();
             $cache->flushByTag('sfc_pageId_' . $runEntry['page_uid']);
             if ($cache->has($runEntry['cache_url'])) {
                 $cache->remove($runEntry['cache_url']);
             }
         }
-        $dbConnection->exec_UPDATEquery(self::QUEUE_TABLE, 'uid=' . $runEntry['uid'], $data);
+
+        $dbConnection = $this->getDatabaseConnection();
+        $dbConnection->exec_DELETEquery(self::QUEUE_TABLE, "identifier='" . $runEntry['identifier'] . "'");
     }
 
     /**
-     * Alternativ for runSingleRequest (not used at the moment)
-     *
+     * @todo Alternative for runSingleRequest (not used at the moment)
      * @param array $data
      * @param array $options
      * @return array
@@ -146,33 +145,17 @@ class QueueManager implements SingletonInterface
     }
 
     /**
-     * Cleanup the cache queue
-     */
-    public function cleanup()
-    {
-        $dbConnection = $this->getDatabaseConnection();
-        $dbConnection->exec_DELETEquery(self::QUEUE_TABLE, 'call_date > 0');
-    }
-
-    /**
-     * Add identifiert to Queue
+     * Add identifier to Queue
+     * This method needs mysql-compatible database connection
      *
-     * @param string $identifier
+     * @param string $cache_url
      */
-    public function addIdentifier($identifier)
+    public function addIdentifier($cache_url)
     {
         $db = $this->getDatabaseConnection();
-        $row = $db->exec_SELECTgetSingleRow('*', self::QUEUE_TABLE, 'cache_url="' . $identifier . '" AND call_date=0');
-        if (is_array($row)) {
-            return;
-        }
-        $data = [
-            'cache_url'    => $identifier,
-            'page_uid'     => 0,
-            'invalid_date' => time(),
-            'call_result'  => ''
-        ];
-        $db->exec_INSERTquery(self::QUEUE_TABLE, $data);
+        $identifier = sha1($cache_url);
+        $sql = 'REPLACE INTO ' . self::QUEUE_TABLE . "(identifier, cache_url, page_uid, invalid_date, call_result) VALUES('" . $identifier . "'".', ' . $db->fullQuoteStr($cache_url, self::QUEUE_TABLE) . ', 0, ' .time().", '')";
+        $db->sql_query($sql);
     }
 
     /**

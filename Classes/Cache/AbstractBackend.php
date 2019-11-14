@@ -23,7 +23,7 @@ class AbstractBackend extends Typo3DatabaseBackend
     /**
      * The default compression level
      */
-    const DEFAULT_COMPRESSION_LEVEL = 3;
+    const DEFAULT_COMPRESSION_LEVEL = 7;
 
     /**
      * Configuration

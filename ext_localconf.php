@@ -54,3 +54,12 @@ $GLOBALS['TYPO3_CONF_VARS']['SYS']['caching']['cacheConfigurations']['staticfile
         'all'
     ]
 ];
+
+if (TYPO3_MODE === 'BE') {
+    $GLOBALS['TYPO3_CONF_VARS']['BE']['toolbarItems'][1573741500] = \SFC\Staticfilecache\ToolbarItem\WarmUpQueueToolbarItem::class;
+    \TYPO3\CMS\Core\Utility\ExtensionManagementUtility::registerAjaxHandler (
+        'WarmUpQueueToolbarItem::renderAjaxStatus',
+        \SFC\Staticfilecache\ToolbarItem\WarmUpQueueToolbarItem::class . '->getStatus'
+        //'TYPO3\\CMS\\Opendocs\\Controller\\OpendocsController->renderAjax'
+    );
+}

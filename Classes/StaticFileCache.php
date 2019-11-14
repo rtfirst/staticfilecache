@@ -60,7 +60,7 @@ class StaticFileCache implements SingletonInterface
      */
     public function __construct()
     {
-        $this->cache = CacheUtility::getCache();
+        $this->cache = CacheUtility::getInstance()->getCache();
         $this->signalDispatcher = GeneralUtility::makeInstance(Dispatcher::class);
         $this->configuration = GeneralUtility::makeInstance(Configuration::class);
     }
@@ -73,7 +73,7 @@ class StaticFileCache implements SingletonInterface
      *
      * @return    void
      */
-    public function insertPageInCache(TypoScriptFrontendController &$pObj, &$timeOutTime)
+    public function insertPageInCache(TypoScriptFrontendController $pObj, &$timeOutTime)
     {
         $isStaticCached = false;
         $uri = $this->getUri();
