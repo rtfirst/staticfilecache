@@ -18,5 +18,12 @@ if (TYPO3_MODE === 'BE') {
     $GLOBALS['TYPO3_CONF_VARS']['typo3/backend.php']['additionalBackendItems'][] = $extensionPath . 'registerToolbarItem.php';
 
     // Register AJAX calls
-    \TYPO3\CMS\Core\Utility\ExtensionManagementUtility::registerAjaxHandler('WarmUpQueueToolbarItem::getStatus', \SFC\Staticfilecache\ToolbarItem\WarmUpQueueToolbarItem::class . '->renderAjaxStatus');
+    /** @var \SFC\Staticfilecache\Configuration $configuration */
+    $configuration = \TYPO3\CMS\Core\Utility\GeneralUtility::makeInstance(\SFC\Staticfilecache\Configuration::class);
+    if ($configuration->get('boostMode') && !defined('SFC_QUEUE_WORKER')) {
+        \TYPO3\CMS\Core\Utility\ExtensionManagementUtility::registerAjaxHandler(
+            'WarmUpQueueToolbarItem::getStatus',
+            \SFC\Staticfilecache\ToolbarItem\WarmUpQueueToolbarItem::class . '->renderAjaxStatus'
+        );
+    }
 }

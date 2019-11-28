@@ -56,10 +56,14 @@ $GLOBALS['TYPO3_CONF_VARS']['SYS']['caching']['cacheConfigurations']['staticfile
 ];
 
 if (TYPO3_MODE === 'BE') {
-    $GLOBALS['TYPO3_CONF_VARS']['BE']['toolbarItems'][1573741500] = \SFC\Staticfilecache\ToolbarItem\WarmUpQueueToolbarItem::class;
-    \TYPO3\CMS\Core\Utility\ExtensionManagementUtility::registerAjaxHandler (
-        'WarmUpQueueToolbarItem::renderAjaxStatus',
-        \SFC\Staticfilecache\ToolbarItem\WarmUpQueueToolbarItem::class . '->getStatus'
-        //'TYPO3\\CMS\\Opendocs\\Controller\\OpendocsController->renderAjax'
-    );
+    /** @var \TYPO3\CMS\Core\Utility\GeneralUtility $configuration */
+    $configuration = \TYPO3\CMS\Core\Utility\GeneralUtility::makeInstance(\SFC\Staticfilecache\Configuration::class);
+    if ($configuration->get('boostMode') && !defined('SFC_QUEUE_WORKER')) {
+        $GLOBALS['TYPO3_CONF_VARS']['BE']['toolbarItems'][1573741500] = \SFC\Staticfilecache\ToolbarItem\WarmUpQueueToolbarItem::class;
+        \TYPO3\CMS\Core\Utility\ExtensionManagementUtility::registerAjaxHandler (
+            'WarmUpQueueToolbarItem::renderAjaxStatus',
+            \SFC\Staticfilecache\ToolbarItem\WarmUpQueueToolbarItem::class . '->getStatus'
+            //'TYPO3\\CMS\\Opendocs\\Controller\\OpendocsController->renderAjax'
+        );
+    }
 }
