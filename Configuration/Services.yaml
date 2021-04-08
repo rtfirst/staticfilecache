@@ -76,3 +76,8 @@ services:
         identifier: 'SfcCacheRuleNoBackendUserListener'
         event: SFC\Staticfilecache\Event\CacheRuleEvent
 
+  SFC\Staticfilecache\Cache\StaticFileBackend:
+    public: true
+
+  SFC\Staticfilecache\Service\QueueService:
+    public: true

@@ -20,6 +20,7 @@ use TYPO3\CMS\Core\Cache\Backend\TransientBackendInterface;
 use TYPO3\CMS\Core\Utility\GeneralUtility;
 use TYPO3\CMS\Core\Utility\PathUtility;
 use TYPO3\CMS\Core\Utility\StringUtility;
+use TYPO3\CMS\Extbase\Utility\DebuggerUtility;
 use TYPO3\CMS\Frontend\Controller\TypoScriptFrontendController;
 
 /**
@@ -345,11 +346,19 @@ class StaticFileBackend extends StaticDatabaseBackend implements TransientBacken
         return true;
     }
 
+    protected QueueService $queueService;
+    // used because of the constructor uses other stuff
+    public function injectQueueService(QueueService $queueService)
+    {
+        $this->queueService = $queueService;
+    }
+
     /**
      * Get queue manager.
      */
     protected function getQueue(): QueueService
     {
+        DebuggerUtility::var_dump(get_class($this->queueService), __METHOD__);die();
         return GeneralUtility::makeInstance(QueueService::class);
     }
 
