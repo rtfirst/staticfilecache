@@ -16,22 +16,13 @@ use Psr\EventDispatcher\EventDispatcherInterface;
 use SFC\Staticfilecache\Event\BuildClientEvent;
 use TYPO3\CMS\Core\Utility\ArrayUtility;
 use TYPO3\CMS\Core\Utility\GeneralUtility;
+use TYPO3\CMS\Extbase\Object\ObjectManager;
 
 /**
  * ClientService.
  */
 class ClientService extends AbstractService
 {
-    protected EventDispatcherInterface $eventDispatcher;
-
-    /**
-     * PrepareMiddleware constructor.
-     */
-    public function __construct(EventDispatcherInterface $eventDispatcher)
-    {
-        $this->eventDispatcher = $eventDispatcher;
-    }
-
     /**
      * Run a single request with guzzle and return status code.
      */
@@ -91,7 +82,8 @@ class ClientService extends AbstractService
         }
 
         $event = new BuildClientEvent($options, $httpOptions);
-        $this->eventDispatcher->dispatch($event);
+        $eventDispatcher = GeneralUtility::makeInstance(ObjectManager::class)->get(EventDispatcherInterface::class);
+        $eventDispatcher->dispatch($event);
 
         $base = $event->getHttpOptions();
         ArrayUtility::mergeRecursiveWithOverrule($base, $event->getOptions());

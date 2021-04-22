@@ -20,6 +20,7 @@ use TYPO3\CMS\Core\Cache\Backend\TransientBackendInterface;
 use TYPO3\CMS\Core\Utility\GeneralUtility;
 use TYPO3\CMS\Core\Utility\PathUtility;
 use TYPO3\CMS\Core\Utility\StringUtility;
+use TYPO3\CMS\Extbase\Object\ObjectManager;
 use TYPO3\CMS\Frontend\Controller\TypoScriptFrontendController;
 
 /**
@@ -342,7 +343,8 @@ class StaticFileBackend extends StaticDatabaseBackend implements TransientBacken
      */
     protected function getQueue(): QueueService
     {
-        return GeneralUtility::makeInstance(QueueService::class);
+        $objectManager = GeneralUtility::makeInstance(ObjectManager::class);
+        return $objectManager->get(QueueService::class);
     }
 
     /**
