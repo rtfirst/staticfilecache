@@ -45,7 +45,7 @@ class UriFrontend extends VariableFrontend
     public function get($entryIdentifier)
     {
         $identifierBuilder = GeneralUtility::makeInstance(IdentifierBuilder::class);
-        if (!$identifierBuilder->isValidEntryIdentifier($entryIdentifier)) {
+        if (!$identifierBuilder->isValidEntryUri($entryIdentifier)) {
             throw new \InvalidArgumentException(
                 $entryIdentifier . '" is not a valid cache entry identifier.',
                 1233058294
