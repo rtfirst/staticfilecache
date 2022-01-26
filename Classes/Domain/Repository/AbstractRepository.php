@@ -46,8 +46,12 @@ abstract class AbstractRepository extends StaticFileCacheObject
     /**
      * Update records.
      */
-    public function update(array $data, array $identifiers): void
+    public function update(array $data, array $identifiers = null): void
     {
+        if (null === $identifiers) {
+            $identifiers = ['uid' => $data['uid']];
+        }
+
         $this->getConnection()->update(
             $this->getTableName(),
             $data,

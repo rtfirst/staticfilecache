@@ -46,7 +46,6 @@ class QueueService extends AbstractService
         $this->cacheService = $cacheService;
     }
 
-
     /**
      * Add identifiers to Queue.
      */
@@ -54,9 +53,11 @@ class QueueService extends AbstractService
     {
         $identifiers = GeneralUtility::makeInstance(CacheRepository::class)->findUrlsByIdentifiers($identifiers);
         foreach ($identifiers as $identifier => $url) {
-            $count = $this->queueRepository->countOpenByIdentifier($identifier);
-            if ($count > 0) {
-                return;
+            $entry = $this->queueRepository->findByIdentifier($identifier);
+            if ($entry) {
+                $entry['cache_priority']++;
+                $this->queueRepository->update($entry, ['uid' => $entry['uid']]);
+                continue;
             }
 
             $this->logger->debug('SFC Queue add', [$identifier]);
@@ -69,7 +70,7 @@ class QueueService extends AbstractService
                     $cache = $this->cacheService->get();
                     $infos = $cache->get($identifier);
                     if (isset($infos['priority'])) {
-                        $priority = (int) $infos['priority'];
+                        $priority = (int)$infos['priority'];
                     }
                 } catch (\Exception $exception) {
                 }
@@ -88,12 +89,7 @@ class QueueService extends AbstractService
         }
     }
 
-    /**
-     * Run a single request with guzzle.
-     *
-     * @throws \TYPO3\CMS\Core\Cache\Exception\NoSuchCacheException
-     */
-    public function runSingleRequest(array $runEntry): void
+    public function removeFromCache($runEntry): void
     {
         $this->configurationService->override('boostMode', '0');
         $cache = $this->cacheService->get();
@@ -103,9 +99,12 @@ class QueueService extends AbstractService
         }
 
         $this->logger->debug('SFC Queue run', $runEntry);
+    }
 
-        $statusCode = $this->clientService->runSingleRequest($runEntry['url']);
-
+    public function setResult($runEntry, $statusCode): void
+    {
+        $this->configurationService->override('boostMode', '0');
+        $cache = $this->cacheService->get();
         $data = [
             'call_date' => time(),
             'call_result' => $statusCode,
@@ -113,9 +112,21 @@ class QueueService extends AbstractService
 
         if (200 !== $statusCode) {
             // Call the flush, if the page is not accessable
-            $cache->flushByTag('pageId_'.$runEntry['page_uid']);
+            $cache->flushByTag('pageId_' . $runEntry['page_uid']);
         }
 
         $this->queueRepository->update($data, ['uid' => (int) $runEntry['uid']]);
+    }
+
+    /**
+     * Run a single request with guzzle.
+     *
+     * @throws \TYPO3\CMS\Core\Cache\Exception\NoSuchCacheException
+     */
+    public function runSingleRequest(array $runEntry): void
+    {
+        $this->removeFromCache($runEntry);
+        $statusCode = $this->clientService->runSingleRequest($runEntry['url']);
+        $this->setResult($runEntry, $statusCode);
     }
 }

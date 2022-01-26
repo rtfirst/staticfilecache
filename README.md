@@ -46,7 +46,17 @@ It is recommended to install the extension in composer mode. If your TYPO3 insta
 
 Have fun with the extension!
 
+# Additions
+If you want to use the boostQueue feature you have to change your webserver configuration. Example with NGINX is to add
 
+    if ($cookie_staticfilecache = '1') {
+        return 405;
+    }
+
+## Using Async
+
+using the Package "spatie/async":"*" and configuring "concurrency" in Extension configuration will make advantage of boosting multiple url at once.
+I highly recommend enabling loadWatchEnabled with that feature and set a system load limit (loadCap) so the processes check the servers load (if possible).
 
 ##  ToDos:
 https://forge.typo3.org/attachments/download/35200/TYPO3-v10-LTS-whats-new.pdf

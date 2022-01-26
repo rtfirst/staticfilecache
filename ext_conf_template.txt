@@ -66,3 +66,16 @@ sendHttp2PushFileLimit = 10
 
 # cat=HttpPush; type=options[No Limit=,<head> tag=head,<body> tag=body]; label=Limit the pushes to specific areas: You can select from either '<head>' or '<body>', which pushes only the assets from the named area. Otherwise, and as default, the whole '<html>' tag is taken.
 sendHttp2PushLimitToArea =
+
+# cat=basic; type=float; label=From that load(1) on do not process the queue any further but wait
+loadCap = 1
+
+# cat=basic; type=integer; label=If we wait, wait for N seconds
+secondsMainLoopWaiting = 60
+
+# cat=basic; type=boolean; label=Activate the load check which is needed for dynamic children spawn
+loadWatchEnabled = 0
+
+# cat=basic; type=int; label=How many parallel processes may spawn
+concurrency = 4
+

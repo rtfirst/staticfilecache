@@ -50,7 +50,7 @@ class ClientService extends AbstractService
      * @param string $domain
      * @return \GuzzleHttp\Client
      */
-    protected function getCallableClient(string $domain): Client
+    public function getCallableClient(string $domain): Client
     {
         $jar = GeneralUtility::makeInstance(CookieJar::class);
         $cookie = GeneralUtility::makeInstance(SetCookie::class);

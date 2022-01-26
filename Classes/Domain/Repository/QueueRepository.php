@@ -8,6 +8,8 @@ declare(strict_types=1);
 
 namespace SFC\Staticfilecache\Domain\Repository;
 
+use TYPO3\CMS\Extbase\Persistence\QueryResultInterface;
+
 /**
  * QueueRepository.
  */
@@ -18,56 +20,58 @@ class QueueRepository extends AbstractRepository
      *
      * @param int $limit
      */
-    public function findOpen($limit = 999): array
+    public function findOpen(int $limit = 99999999): array
     {
         $queryBuilder = $this->createQuery();
 
-        return (array) $queryBuilder->select('*')
+        return $queryBuilder->select('*')
             ->from($this->getTableName())
             ->where($queryBuilder->expr()->eq('call_date', 0))
             ->setMaxResults($limit)
             ->orderBy('cache_priority', 'desc')
             ->execute()
-            ->fetchAll()
+            ->fetchAllAssociative()
         ;
     }
 
-    /**
-     *
-     *
-     * Find open by identnfier.
-     *
-     * @param string $identifier
-     */
-    public function countOpenByIdentifier($identifier): int
+    public function findByIdentifier(string $identifier): array
     {
         $queryBuilder = $this->createQuery();
         $where = $queryBuilder->expr()->andX(
-            $queryBuilder->expr()->eq('identifier', $queryBuilder->createNamedParameter($identifier)),
-            $queryBuilder->expr()->eq('call_date', 0)
+            $queryBuilder->expr()->eq('identifier', $queryBuilder->createNamedParameter($identifier))
         );
 
-        return (int) $queryBuilder->select('uid')
+        return $queryBuilder->select('*')
             ->from($this->getTableName())
             ->where($where)
             ->execute()
-            ->rowCount()
+            ->fetchAssociative() ?: []
         ;
     }
 
-    /**
-     * Find old entries.
-     */
     public function findOld(): array
     {
         $queryBuilder = $this->createQuery();
 
-        return (array) $queryBuilder->select('uid')
+        return $queryBuilder->select('uid')
             ->from($this->getTableName())
-            ->where($queryBuilder->expr()->gt('call_date', 0))
+            ->where(
+                $queryBuilder->expr()->isNull('error'),
+                $queryBuilder->expr()->neq('call_result', $queryBuilder->quote(''))
+            )
             ->execute()
-            ->fetchAll()
-        ;
+            ->fetchAllAssociative();
+    }
+
+    public function findStatistical()
+    {
+        $queryBuilder = $this->createQuery();
+        return $queryBuilder->select('*')
+            ->from($this->getTableName())
+            ->orderBy('error', 'DESC')
+            ->addOrderBy('cache_priority')
+            ->addOrderBy('call_result')
+            ->execute();
     }
 
     /**
