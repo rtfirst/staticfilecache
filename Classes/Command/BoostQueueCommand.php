@@ -16,6 +16,7 @@ use SFC\Staticfilecache\Service\ConfigurationService;
 use SFC\Staticfilecache\Service\QueueService;
 use SFC\Staticfilecache\Service\SystemLoadService;
 use Spatie\Async\Pool;
+use Symfony\Component\Console\Command\Command;
 use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Input\InputOption;
 use Symfony\Component\Console\Output\OutputInterface;
@@ -145,11 +146,7 @@ class BoostQueueCommand extends AbstractCommand
                         $this->pool->notify();
                     }
 
-                    $event = new PoolEvent([
-                        'actualConcurrency' => $this->actualConcurrency
-                    ]);
-                    $eventDispatcher = GeneralUtility::makeInstance(ObjectManager::class)->get(EventDispatcherInterface::class);
-                    $eventDispatcher->dispatch($event);
+                    $this->dispatchPoolEvent();
 
                     /** @noinspection JsonEncodingApiUsageInspection */
                     $parts = json_decode($pack, true);
@@ -174,10 +171,21 @@ class BoostQueueCommand extends AbstractCommand
         $io->success(\count($rows) . ' items are done (perhaps not all are processed).');
 
         if (!(bool)$input->getOption('avoid-cleanup')) {
-            //$this->cleanupQueue($io);
+            $this->cleanupQueue($io);
         }
 
-        return 0;
+        $this->dispatchPoolEvent();
+
+        return Command::SUCCESS;
+    }
+
+    protected function dispatchPoolEvent(): void
+    {
+        $event = new PoolEvent([
+            'actualConcurrency' => $this->actualConcurrency
+        ]);
+        $eventDispatcher = GeneralUtility::makeInstance(ObjectManager::class)->get(EventDispatcherInterface::class);
+        $eventDispatcher->dispatch($event);
     }
 
     protected function hasAsyncAbility(): bool
