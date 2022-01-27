@@ -86,6 +86,20 @@ class BoostQueueCommand extends AbstractCommand
         $io = new SymfonyStyle($input, $output);
         $this->io = $io;
 
+        $list = [];
+        exec('find /proc -mindepth 2 -maxdepth 2 -name cmdline -print0|xargs  -0 -n1', $list);
+        $c = 0;
+        foreach ($list as $file) {
+            if (file_exists($file) && is_readable($file)) {
+                $c += preg_match('/staticfilecache:boostQueue/', file_get_contents($file));
+            }
+        }
+
+        if ($c > 1) {
+            $io->isVerbose() && $io->error('Process already running');
+            return Command::FAILURE;
+        }
+
         if ($input->getOption('concurrency')) {
             $this->concurrency = (int)$input->getOption('concurrency');
         }
@@ -137,6 +151,8 @@ class BoostQueueCommand extends AbstractCommand
                     if ($this->systemLoadService->enabled()) {
                         if ($this->systemLoadService->loadExceeded()) {
                             $this->lowerPoolConcurrency();
+                            $this->io->isVerbose() && $this->io->note('Waiting some seconds');
+                            $this->systemLoadService->wait();
                         } else {
                             $this->raisePoolConcurrency();
                         }
