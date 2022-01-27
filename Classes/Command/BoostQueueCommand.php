@@ -100,6 +100,14 @@ class BoostQueueCommand extends AbstractCommand
             return Command::FAILURE;
         }
 
+        // reset picked items as we assume this command is the master
+        $io->note('Reset items which are picked by a process and were not done for whatever reason');
+        $entries = $this->queueRepository->findStatistical();
+        while ($row = $entries->fetchAssociative()) {
+            $row['call_date'] = 0;
+            $this->queueRepository->update($row);
+        }
+
         if ($input->getOption('concurrency')) {
             $this->concurrency = (int)$input->getOption('concurrency');
         }
@@ -269,7 +277,7 @@ class BoostQueueCommand extends AbstractCommand
     }
 
     /**
-     * Cleanup queue.
+     * @throws \Doctrine\DBAL\Driver\Exception
      */
     protected function cleanupQueue(SymfonyStyle $io): void
     {
@@ -280,7 +288,6 @@ class BoostQueueCommand extends AbstractCommand
             $io->progressAdvance();
         }
         $io->progressFinish();
-
         $io->success(\count($rows) . ' items are removed.');
     }
 }

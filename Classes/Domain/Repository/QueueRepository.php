@@ -26,7 +26,10 @@ class QueueRepository extends AbstractRepository
 
         return $queryBuilder->select('*')
             ->from($this->getTableName())
-            ->where($queryBuilder->expr()->eq('call_date', 0))
+            ->where(
+                $queryBuilder->expr()->eq('call_date', 0),
+                $queryBuilder->expr()->isNull('error'),
+            )
             ->setMaxResults($limit)
             ->orderBy('cache_priority', 'desc')
             ->execute()
