@@ -78,7 +78,20 @@ class BackendController extends ActionController
             'enable' => (bool) $configurationService->get('boostMode'),
             'open' => \count($queueRepository->findOpen(99999999)),
             'old' => \count($queueRepository->findOld()),
+            'errors' => $queueRepository->findStatistical(),
         ]);
+    }
+
+    public function resetAction(): void
+    {
+        $queueRepository = GeneralUtility::makeInstance(QueueRepository::class);
+        $entries = $queueRepository->findStatistical();
+        while ($row = $entries->fetchAssociative()) {
+            $row['error'] = null;
+            $row['call_date'] = 0;
+            $queueRepository->update($row);
+        }
+        $this->redirect('boost');
     }
 
     /**
