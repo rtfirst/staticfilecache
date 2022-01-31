@@ -63,6 +63,7 @@ class BoostQueueCommand extends AbstractCommand
         parent::configure();
         $this->setDescription('Run (work on) the cache boost queue. Call this task every 5 minutes.')
             ->addOption('avoid-cleanup', null, InputOption::VALUE_NONE, 'Avoid the cleanup of the queue items')
+            ->addOption('limit-items', null, InputOption::VALUE_REQUIRED, 'Limit the items that are crawled. 0 => all', 1000)
             ->addOption('concurrency', null, InputOption::VALUE_OPTIONAL, 'If concurrent mode is enabled spawns up to N-threads');
     }
 
@@ -78,6 +79,7 @@ class BoostQueueCommand extends AbstractCommand
      *
      * @throws \TYPO3\CMS\Core\Cache\Exception\NoSuchCacheException
      * @throws \Exception
+     * @throws \Doctrine\DBAL\Driver\Exception
      *
      * @see setCode()
      */
@@ -126,7 +128,13 @@ class BoostQueueCommand extends AbstractCommand
             $io->note('Async ability not available');
         }
 
-        $rows = $this->queueRepository->findOpen();
+        if (!(bool)$input->getOption('avoid-cleanup')) {
+            $this->cleanupQueue($io);
+        }
+
+        $limit = (int)$input->getOption('limit-items');
+        $limit = $limit > 0 ? $limit : 99999999;
+        $rows = $this->queueRepository->findOpen($limit);
 
         $io->progressStart(\count($rows));
         foreach ($rows as $runEntry) {
