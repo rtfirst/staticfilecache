@@ -160,12 +160,12 @@ class BoostQueueCommand extends AbstractCommand
             }
 
             $options = $this->clientService->getOptions($uri->getHost());
-            $client = $this->clientService->getCallableClient($options);
             if ($this->user) {
                 $options['auth'] = [
                     $this->user, $this->pass
                 ];
             }
+            $client = $this->clientService->getCallableClient($options);
             $this->queueService->removeFromCache($runEntry);
             $url = (string)$uri;
 
