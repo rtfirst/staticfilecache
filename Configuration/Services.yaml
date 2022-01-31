@@ -12,6 +12,11 @@ services:
       - name: 'console.command'
         command: 'staticfilecache:boostQueue'
 
+  SFC\Staticfilecache\Command\CleanBoostQueueCommand:
+    tags:
+      - name: 'console.command'
+        command: 'staticfilecache:cleanBoostQueue'
+
   SFC\Staticfilecache\EventListener\AfterPackageDeactivationListener:
     tags:
       - name: event.listener

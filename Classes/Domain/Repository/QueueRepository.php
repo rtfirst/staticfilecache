@@ -66,6 +66,19 @@ class QueueRepository extends AbstractRepository
             ->fetchAllAssociative();
     }
 
+    public function findError(): array
+    {
+        $queryBuilder = $this->createQuery();
+
+        return $queryBuilder->select('*')
+            ->from($this->getTableName())
+            ->where(
+                $queryBuilder->expr()->isNotNull('error'),
+            )
+            ->execute()
+            ->fetchAllAssociative();
+    }
+
     public function findStatistical()
     {
         $queryBuilder = $this->createQuery();

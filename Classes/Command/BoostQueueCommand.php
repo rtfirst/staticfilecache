@@ -216,10 +216,6 @@ class BoostQueueCommand extends AbstractCommand
         $io->progressFinish();
         $io->success(count($rows) . ' items are done (perhaps not all are processed).');
 
-        if (!(bool)$input->getOption('avoid-cleanup')) {
-            $this->cleanupQueue($io);
-        }
-
         $this->dispatchPoolEvent();
 
         return Command::SUCCESS;
@@ -307,6 +303,7 @@ class BoostQueueCommand extends AbstractCommand
         foreach ($rows as $row) {
             $this->queueRepository->delete(['uid' => $row['uid']]);
         }
+
         $io->success(count($rows) . ' items are removed.');
     }
 }
