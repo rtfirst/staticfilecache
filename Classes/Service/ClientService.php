@@ -33,7 +33,7 @@ class ClientService extends AbstractService
             if (false === $host) {
                 throw new \Exception('No host in url', 1263782);
             }
-            $client = $this->getCallableClient($host);
+            $client = $this->getCallableClient($this->getOptions($host));
             $response = $client->get($url);
 
             return (int) $response->getStatusCode();
@@ -44,13 +44,7 @@ class ClientService extends AbstractService
         return 900;
     }
 
-    /**
-     * Get a cllable client.
-     *
-     * @param string $domain
-     * @return \GuzzleHttp\Client
-     */
-    public function getCallableClient(string $domain): Client
+    public function getOptions(string $domain): array
     {
         $jar = GeneralUtility::makeInstance(CookieJar::class);
         $cookie = GeneralUtility::makeInstance(SetCookie::class);
@@ -88,7 +82,11 @@ class ClientService extends AbstractService
 
         $base = $event->getHttpOptions();
         ArrayUtility::mergeRecursiveWithOverrule($base, $event->getOptions());
+        return $base;
+    }
 
-        return GeneralUtility::makeInstance(Client::class, $base);
+    public function getCallableClient(array $options): Client
+    {
+        return GeneralUtility::makeInstance(Client::class, $options);
     }
 }

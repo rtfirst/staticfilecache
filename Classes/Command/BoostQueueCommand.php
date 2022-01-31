@@ -151,17 +151,21 @@ class BoostQueueCommand extends AbstractCommand
                 $this->io->progressAdvance();
                 continue;
             }
-
             try {
                 $uri = new Uri($runEntry['url']);
-                $uri->withUserInfo($this->user, $this->pass ?: null);
             } catch (Exception $exception) {
                 $runEntry['error'] = $exception->getMessage();
                 $this->queueRepository->update($runEntry);
                 continue;
             }
 
-            $client = $this->clientService->getCallableClient($uri->getHost());
+            $options = $this->clientService->getOptions($uri->getHost());
+            $client = $this->clientService->getCallableClient($options);
+            if ($this->user) {
+                $options['auth'] = [
+                    $this->user, $this->pass
+                ];
+            }
             $this->queueService->removeFromCache($runEntry);
             $url = (string)$uri;
 
