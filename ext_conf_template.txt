@@ -22,9 +22,6 @@ renameTablesToOtherPrefix = 0
 # cat=basic; type=boolean; label=Use reverse URI length in priority: Add "1000-URILENGTH" to the priority so the home page is much more important than deeplinks
 useReverseUriLengthInPriority = 1
 
-# cat=basic; type=boolean; label=Use fallback middleware: Use the fallback middleware to deliver the static file, if there is no .htaccess configuration
-useFallbackMiddleware = 1
-
 # cat=basic; type=boolean; label=Hash URI in cache (BETA!!!): Hash the URI in cache so the cache identifier is short. Avoid problems with very large URIs
 hashUriInCache = 0
 
@@ -79,3 +76,8 @@ loadWatchEnabled = 0
 # cat=basic; type=int; label=How many parallel processes may spawn
 concurrency = 4
 
+# cat=basic; type=string; label=Basic auth user
+user =
+
+# cat=basic; type=string; label=Basic auth pass
+pass =

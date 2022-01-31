@@ -1,13 +1,11 @@
 <?php
 
-/**
- * BoostQueueRunCommand.
- */
 declare(strict_types=1);
 
 namespace SFC\Staticfilecache\Command;
 
 use Exception;
+use GuzzleHttp\Psr7\Uri;
 use Psr\EventDispatcher\EventDispatcherInterface;
 use SFC\Staticfilecache\Domain\Repository\QueueRepository;
 use SFC\Staticfilecache\Event\PoolEvent;
@@ -24,6 +22,7 @@ use Symfony\Component\Console\Style\SymfonyStyle;
 use Throwable;
 use TYPO3\CMS\Core\Utility\GeneralUtility;
 use TYPO3\CMS\Extbase\Object\ObjectManager;
+use function count;
 use function json_decode;
 use function json_encode;
 
@@ -38,6 +37,8 @@ class BoostQueueCommand extends AbstractCommand
     protected int $concurrency = 1;
     protected SymfonyStyle $io;
     protected bool $hasPool = false;
+    protected string $user;
+    protected string $pass;
 
     public function __construct(
         QueueRepository      $queueRepository,
@@ -52,6 +53,10 @@ class BoostQueueCommand extends AbstractCommand
         $this->systemLoadService = $systemLoadService;
         $this->clientService = $clientService;
         $this->concurrency = (int)$configurationService->get('concurrency');
+
+        $this->user = trim($configurationService->get('user') ?: '');
+        $this->pass = trim($configurationService->get('pass') ?: '');
+
         parent::__construct('staticfilecache:boostQueue');
     }
 
@@ -136,7 +141,7 @@ class BoostQueueCommand extends AbstractCommand
         $limit = $limit > 0 ? $limit : 99999999;
         $rows = $this->queueRepository->findOpen($limit);
 
-        $io->progressStart(\count($rows));
+        $io->progressStart(count($rows));
         foreach ($rows as $runEntry) {
             $runEntry['call_date'] = time();
             $this->queueRepository->update($runEntry);
@@ -147,13 +152,18 @@ class BoostQueueCommand extends AbstractCommand
                 continue;
             }
 
-            $url = $runEntry['url'];
-            $host = parse_url($url, PHP_URL_HOST);
-            if (false === $host) {
-                throw new Exception('No host in url', 1263782);
+            try {
+                $uri = new Uri($runEntry['url']);
+                $uri->withUserInfo($this->user, $this->pass ?: null);
+            } catch (Exception $exception) {
+                $runEntry['error'] = $exception->getMessage();
+                $this->queueRepository->update($runEntry);
+                continue;
             }
-            $client = $this->clientService->getCallableClient($host);
+
+            $client = $this->clientService->getCallableClient($uri->getHost());
             $this->queueService->removeFromCache($runEntry);
+            $url = (string)$uri;
 
             $this->feedPool(
                 static function () use ($client, $url, $runEntry): string {
@@ -167,7 +177,7 @@ class BoostQueueCommand extends AbstractCommand
                     if ($this->systemLoadService->enabled()) {
                         if ($this->systemLoadService->loadExceeded()) {
                             $this->lowerPoolConcurrency();
-                            $this->io->isVerbose() && $this->io->note('Waiting some seconds');
+                            $this->io->isVeryVerbose() && $this->io->note('Waiting some seconds');
                             $this->systemLoadService->wait();
                         } else {
                             $this->raisePoolConcurrency();
@@ -200,7 +210,7 @@ class BoostQueueCommand extends AbstractCommand
         }
 
         $io->progressFinish();
-        $io->success(\count($rows) . ' items are done (perhaps not all are processed).');
+        $io->success(count($rows) . ' items are done (perhaps not all are processed).');
 
         if (!(bool)$input->getOption('avoid-cleanup')) {
             $this->cleanupQueue($io);
@@ -241,9 +251,9 @@ class BoostQueueCommand extends AbstractCommand
     {
         $this->pool->add($callable)->then(
             function (string $output) use ($callback) {
-                $this->io->isVerbose() && $this->io->note($output);
+                $this->io->isVeryVerbose() && $this->io->note($output);
                 $callbackOutput = $callback($output);
-                $this->io->isVerbose() && $this->io->note($callbackOutput);
+                $this->io->isVeryVerbose() && $this->io->note($callbackOutput);
             }
         )->catch(
             function (Throwable $exception) use ($runEntry) {
@@ -290,12 +300,9 @@ class BoostQueueCommand extends AbstractCommand
     protected function cleanupQueue(SymfonyStyle $io): void
     {
         $rows = $this->queueRepository->findOld();
-        $io->progressStart(\count($rows));
         foreach ($rows as $row) {
             $this->queueRepository->delete(['uid' => $row['uid']]);
-            $io->progressAdvance();
         }
-        $io->progressFinish();
-        $io->success(\count($rows) . ' items are removed.');
+        $io->success(count($rows) . ' items are removed.');
     }
 }
