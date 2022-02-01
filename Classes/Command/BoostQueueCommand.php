@@ -138,7 +138,7 @@ class BoostQueueCommand extends AbstractCommand
         }
 
         $limit = (int)$input->getOption('limit-items');
-        $limit = $limit > 0 ? $limit : 99999999;
+        $limit = $limit > 0 ? $limit : 5000;
         $rows = $this->queueRepository->findOpen($limit);
 
         $io->progressStart(count($rows));
