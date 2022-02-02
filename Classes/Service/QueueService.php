@@ -51,41 +51,32 @@ class QueueService extends AbstractService
      */
     public function addIdentifiers(array $identifiers, int $overridePriority = self::PRIORITY_LOW): void
     {
+        $priority = self::PRIORITY_LOW;
+        if ($overridePriority) {
+            $priority = $overridePriority;
+        }
+
         $identifiers = GeneralUtility::makeInstance(CacheRepository::class)->findUrlsByIdentifiers($identifiers);
+        $increased = array_flip(array_column($this->queueRepository->increaseCachePriorityByIdentifiers(array_keys($identifiers)), 'identifier'));
+
+        $additions = [];
         foreach ($identifiers as $identifier => $url) {
-            $entry = $this->queueRepository->findByIdentifier($identifier);
-            if ($entry) {
-                $entry['cache_priority']++;
-                $this->queueRepository->update($entry, ['uid' => $entry['uid']]);
-                continue;
+            if (!isset($increased[$identifier])) {
+                $additions[] = [
+                    'identifier' => $identifier,
+                    'url' => $url,
+                    'page_uid' => 0,
+                    'invalid_date' => time(),
+                    'call_result' => '',
+                    'cache_priority' => $priority,
+                    'error' => null,
+                    'call_date' => 0,
+                ];
             }
-
-            $this->logger->debug('SFC Queue add', [$identifier]);
-
-            if ($overridePriority) {
-                $priority = $overridePriority;
-            } else {
-                $priority = self::PRIORITY_LOW;
-                try {
-                    $cache = $this->cacheService->get();
-                    $infos = $cache->get($identifier);
-                    if (isset($infos['priority'])) {
-                        $priority = (int)$infos['priority'];
-                    }
-                } catch (\Exception $exception) {
-                }
-            }
-
-            $data = [
-                'identifier' => $identifier,
-                'url' => $url,
-                'page_uid' => 0,
-                'invalid_date' => time(),
-                'call_result' => '',
-                'cache_priority' => $priority,
-            ];
-
-            $this->queueRepository->insert($data);
+        }
+        if ($additions) {
+            $this->logger->debug('SFC Queue add', array_column($additions, 'url'));
+            $this->queueRepository->bulkInsert($additions);
         }
     }
 

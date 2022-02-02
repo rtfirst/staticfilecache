@@ -44,6 +44,17 @@ abstract class AbstractRepository extends StaticFileCacheObject
     }
 
     /**
+     * Insert records.
+     */
+    public function bulkInsert(array $data): void
+    {
+        if (!$data) {
+            return;
+        }
+        $this->getConnection()->bulkInsert($this->getTableName(), $data, array_keys($data[0]));
+    }
+
+    /**
      * Update records.
      */
     public function update(array $data, array $identifiers = null): void

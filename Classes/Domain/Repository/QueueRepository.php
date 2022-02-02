@@ -37,18 +37,32 @@ class QueueRepository extends AbstractRepository
         ;
     }
 
-    public function findByIdentifier(string $identifier): array
+    /**
+     * @param array $identifier
+     * @return array<string>
+     * @throws \Doctrine\DBAL\Driver\Exception
+     */
+    public function increaseCachePriorityByIdentifiers(array $identifiers): array
     {
         $queryBuilder = $this->createQuery();
+        $c = count($identifiers);
+        for ($i=0; $i < $c; $i++) {
+            $identifiers[$i] = $queryBuilder->quote($identifiers[$i]);
+        }
         $where = $queryBuilder->expr()->andX(
-            $queryBuilder->expr()->eq('identifier', $queryBuilder->createNamedParameter($identifier))
+            $queryBuilder->expr()->in('identifier', $identifiers)
         );
 
-        return $queryBuilder->select('*')
+        $queryBuilder->update($this->getTableName())->set('cache_priority', 'cache_priority + 1', false, \PDO::PARAM_STMT)->where($where)->execute();
+
+        $queryBuilder = $this->createQuery();
+        return $queryBuilder->
+
+        select('*')
             ->from($this->getTableName())
             ->where($where)
             ->execute()
-            ->fetchAssociative() ?: []
+            ->fetchAllAssociative() ?: []
         ;
     }
 
