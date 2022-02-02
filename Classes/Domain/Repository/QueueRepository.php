@@ -44,11 +44,16 @@ class QueueRepository extends AbstractRepository
      */
     public function increaseCachePriorityByIdentifiers(array $identifiers): array
     {
-        $queryBuilder = $this->createQuery();
         $c = count($identifiers);
-        for ($i=0; $i < $c; $i++) {
+        if ($c === 0) {
+            return [];
+        }
+
+        $queryBuilder = $this->createQuery();
+        for ($i = 0; $i < $c; $i++) {
             $identifiers[$i] = $queryBuilder->quote($identifiers[$i]);
         }
+
         $where = $queryBuilder->expr()->andX(
             $queryBuilder->expr()->in('identifier', $identifiers)
         );
