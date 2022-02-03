@@ -52,9 +52,10 @@ abstract class AbstractRepository extends StaticFileCacheObject
             return;
         }
         $keys = array_keys($data[0]);
-        foreach (array_chunk($data, 8000) as $chunk)
+        foreach (array_chunk($data, 1000) as $chunk)
         {
             $this->getConnection()->bulkInsert($this->getTableName(), $chunk, $keys);
+            sleep(1);
         }
     }
 

@@ -1,17 +1,21 @@
 <?php
 
-declare(strict_types=1);
+declare(strict_types = 1);
 
 namespace SFC\Staticfilecache\Command;
 
 use Exception;
 use GuzzleHttp\Psr7\Uri;
 use Psr\EventDispatcher\EventDispatcherInterface;
+use Psr\Log\LoggerAwareInterface;
+use Psr\Log\LoggerAwareTrait;
+use SFC\Staticfilecache\Cache\IdentifierBuilder;
 use SFC\Staticfilecache\Domain\Repository\QueueRepository;
 use SFC\Staticfilecache\Event\PoolEvent;
 use SFC\Staticfilecache\Service\ClientService;
 use SFC\Staticfilecache\Service\ConfigurationService;
 use SFC\Staticfilecache\Service\QueueService;
+use SFC\Staticfilecache\Service\RemoveService;
 use SFC\Staticfilecache\Service\SystemLoadService;
 use Spatie\Async\Pool;
 use Symfony\Component\Console\Command\Command;
@@ -26,8 +30,9 @@ use function count;
 use function json_decode;
 use function json_encode;
 
-class BoostQueueCommand extends AbstractCommand
+class BoostQueueCommand extends AbstractCommand implements LoggerAwareInterface
 {
+    use LoggerAwareTrait;
     protected QueueRepository $queueRepository;
     protected QueueService $queueService;
     protected ClientService $clientService;
@@ -39,13 +44,19 @@ class BoostQueueCommand extends AbstractCommand
     protected bool $hasPool = false;
     protected string $user;
     protected string $pass;
+    protected bool $stop = false;
+    protected $handler;
+    protected RemoveService $removeService;
+    protected IdentifierBuilder $identifierBuilder;
 
     public function __construct(
         QueueRepository      $queueRepository,
         QueueService         $queueService,
         SystemLoadService    $systemLoadService,
         ClientService        $clientService,
-        ConfigurationService $configurationService
+        ConfigurationService $configurationService,
+        RemoveService        $removeService,
+        IdentifierBuilder    $identifierBuilder
     )
     {
         $this->queueRepository = $queueRepository;
@@ -53,6 +64,8 @@ class BoostQueueCommand extends AbstractCommand
         $this->systemLoadService = $systemLoadService;
         $this->clientService = $clientService;
         $this->concurrency = (int)$configurationService->get('concurrency');
+        $this->removeService = $removeService;
+        $this->identifierBuilder = $identifierBuilder;
 
         $this->user = trim($configurationService->get('user') ?: '');
         $this->pass = trim($configurationService->get('pass') ?: '');
@@ -72,26 +85,34 @@ class BoostQueueCommand extends AbstractCommand
             ->addOption('concurrency', null, InputOption::VALUE_OPTIONAL, 'If concurrent mode is enabled spawns up to N-threads');
     }
 
+    protected function registerSignals(): void
+    {
+        pcntl_async_signals(true);
+        $signals = [SIGINT /*, SIGQUIT, SIGHUP, SIGTERM, */];
+        $setStop = function()  {
+            $message = 'Received signal, stopping worker';
+            $this->io->warning($message);
+            $this->logger->warning($message);
+            $this->stop = true;
+        };
+        foreach ($signals as $signal) {
+            $this->io->note('Signal ' . $signal . ' registered');
+            pcntl_signal($signal, $setStop);
+        }
+    }
+
     /**
-     * Executes the current command.
-     *
-     * This method is not abstract because you can use this class
-     * as a concrete class. In this case, instead of defining the
-     * execute() method, you set the code to execute by passing
-     * a Closure to the setCode() method.
-     *
-     * @return null|int null or 0 if everything went fine, or an error code
-     *
+     * @return int
      * @throws \TYPO3\CMS\Core\Cache\Exception\NoSuchCacheException
      * @throws \Exception
      * @throws \Doctrine\DBAL\Driver\Exception
-     *
-     * @see setCode()
      */
     protected function execute(InputInterface $input, OutputInterface $output)
     {
         $io = new SymfonyStyle($input, $output);
         $this->io = $io;
+
+        $this->registerSignals();
 
         $list = [];
         exec('find /proc -mindepth 2 -maxdepth 2 -name cmdline -print0|xargs  -0 -n1', $list);
@@ -146,16 +167,26 @@ class BoostQueueCommand extends AbstractCommand
             $runEntry['call_date'] = time();
             $this->queueRepository->update($runEntry);
 
-            if (!$this->hasPool) {
-                $this->queueService->runSingleRequest($runEntry);
-                $this->io->progressAdvance();
-                continue;
-            }
             try {
                 $uri = new Uri($runEntry['url']);
             } catch (Exception $exception) {
                 $runEntry['error'] = $exception->getMessage();
                 $this->queueRepository->update($runEntry);
+                continue;
+            }
+
+            if (!$this->hasPool) {
+                $code = $this->queueService->runSingleRequest($runEntry);
+                if ($code !== 200) {
+                    $url = $runEntry['url'];
+                    $fileName = $this->identifierBuilder->getFilepath($url);
+                    $path = dirname($fileName);
+                    $this->removeService->removeFilesFromDirectoryAndDirectoryItselfIfEmpty($path, $this->io);
+                }
+                $this->io->progressAdvance();
+                if ($this->stop) {
+                    break;
+                }
                 continue;
             }
 
@@ -178,6 +209,19 @@ class BoostQueueCommand extends AbstractCommand
                    ]);
                 },
                 function (string $pack): string {
+                    // if signal to stop was received clear the pool
+                    if ($this->stop) {
+                        $this->pool->stop();
+                        foreach ($this->pool->getInProgress() as $runnable) {
+                            $this->pool->markAsFailed($runnable);
+                        }
+                        $this->pool->wait();
+                        $message = 'Stopped pool';
+                        $this->logger->emergency($message);
+                        return $message;
+                    }
+
+                    // this should not get any further?
                     if ($this->systemLoadService->enabled()) {
                         if ($this->systemLoadService->loadExceeded()) {
                             $this->lowerPoolConcurrency();
@@ -198,9 +242,21 @@ class BoostQueueCommand extends AbstractCommand
                     $parts = json_decode($pack, true);
                     $message = '';
                     if ($parts) {
-                        $this->queueService->setResult($parts['runEntry'], $parts['code'] ?: 900);
+                        $code = $parts['code'] ?: 900;
+                        $this->queueService->setResult($parts['runEntry'], $code);
+
+                        // if the code is not ok, remove the static file so newly created sys_redirects and so on will not end up serving old html
+                        if ($code !== 200) {
+                            $url = $parts['runEntry']['url'];
+                            $fileName = $this->identifierBuilder->getFilepath($url);
+                            $path = dirname($fileName);
+                            $this->removeService->removeFilesFromDirectoryAndDirectoryItselfIfEmpty($path, $this->io);
+                        }
+
                         $message = $parts['runEntry']['url'] . ' returned status code ' . $parts['code'];
                     }
+
+
 
                     $this->io->progressAdvance();
                     return $message;
@@ -257,9 +313,11 @@ class BoostQueueCommand extends AbstractCommand
             }
         )->catch(
             function (Throwable $exception) use ($runEntry) {
-                $this->io->error($exception->getMessage());
-                $runEntry['error'] = $exception->getMessage();
-                $this->queueRepository->update($runEntry);
+                if ($exception->getMessage()) {
+                    $this->io->error($exception->getMessage());
+                    $runEntry['error'] = $exception->getMessage();
+                    $this->queueRepository->update($runEntry);
+                }
             }
         )->timeout(
             function () use ($runEntry) {

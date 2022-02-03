@@ -58,7 +58,11 @@ class QueueRepository extends AbstractRepository
             $queryBuilder->expr()->in('identifier', $identifiers)
         );
 
-        $queryBuilder->update($this->getTableName())->set('cache_priority', 'cache_priority + 1', false, \PDO::PARAM_STMT)->where($where)->execute();
+        $queryBuilder->update($this->getTableName())
+            ->set('call_result', '')
+            ->set('cache_priority', 'cache_priority + 1', false, \PDO::PARAM_STMT)
+            ->where($where)
+            ->execute();
 
         $queryBuilder = $this->createQuery();
         return $queryBuilder->
@@ -93,6 +97,19 @@ class QueueRepository extends AbstractRepository
             ->from($this->getTableName())
             ->where(
                 $queryBuilder->expr()->isNotNull('error'),
+            )
+            ->execute()
+            ->fetchAllAssociative();
+    }
+
+    public function findByStatus(int $status): array
+    {
+        $queryBuilder = $this->createQuery();
+
+        return $queryBuilder->select('*')
+            ->from($this->getTableName())
+            ->where(
+                $queryBuilder->expr()->eq('call_result', $status)
             )
             ->execute()
             ->fetchAllAssociative();

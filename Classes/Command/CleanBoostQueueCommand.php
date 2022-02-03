@@ -6,18 +6,20 @@ namespace SFC\Staticfilecache\Command;
 
 use SFC\Staticfilecache\Cache\IdentifierBuilder;
 use SFC\Staticfilecache\Domain\Repository\QueueRepository;
+use SFC\Staticfilecache\Service\RemoveService;
 use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Output\OutputInterface;
 use TYPO3\CMS\Core\Utility\GeneralUtility;
-use function count;
 
 class CleanBoostQueueCommand extends AbstractCommand
 {
     protected QueueRepository $queueRepository;
+    protected RemoveService $removeService;
 
-    public function __construct(QueueRepository $queueRepository)
+    public function __construct(QueueRepository $queueRepository, RemoveService $removeService)
     {
         $this->queueRepository = $queueRepository;
+        $this->removeService = $removeService;
         parent::__construct('staticfilecache:cleanBoostQueue');
     }
 
@@ -32,27 +34,12 @@ class CleanBoostQueueCommand extends AbstractCommand
      */
     protected function execute(InputInterface $input, OutputInterface $output)
     {
-        $rows = $this->queueRepository->findStatistical();
+        $rows = $this->queueRepository->findError();
         foreach ($rows as $row) {
             $identifierBuilder = GeneralUtility::makeInstance(IdentifierBuilder::class);
             $fileName = $identifierBuilder->getFilepath($row['url']);
             $path = dirname($fileName);
-            if (file_exists($path)) {
-                $files = glob($path . '/index*');
-                foreach ($files as $file) {
-                    unlink($file);
-                    $output->writeln('deleted ' . $file);
-                }
-                $file = $path . '/.htaccess';
-                if (file_exists($file)) {
-                    unlink($file);
-                    $output->writeln('deleted ' . $file);
-                }
-                if (count(scandir($path)) === 2) {
-                    rmdir($path);
-                    $output->writeln('deleted ' . $path);
-                }
-            }
+            $this->removeService->removeFilesFromDirectoryAndDirectoryItselfIfEmpty($path, $output);
             $this->queueRepository->delete(['uid' => $row['uid']]);
         }
 

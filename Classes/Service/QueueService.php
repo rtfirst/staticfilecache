@@ -109,15 +109,11 @@ class QueueService extends AbstractService
         $this->queueRepository->update($data, ['uid' => (int) $runEntry['uid']]);
     }
 
-    /**
-     * Run a single request with guzzle.
-     *
-     * @throws \TYPO3\CMS\Core\Cache\Exception\NoSuchCacheException
-     */
-    public function runSingleRequest(array $runEntry): void
+    public function runSingleRequest(array $runEntry): int
     {
         $this->removeFromCache($runEntry);
         $statusCode = $this->clientService->runSingleRequest($runEntry['url']);
         $this->setResult($runEntry, $statusCode);
+        return $statusCode;
     }
 }
