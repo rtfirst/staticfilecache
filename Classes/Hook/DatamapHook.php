@@ -37,7 +37,10 @@ class DatamapHook extends AbstractHook
 
         $row = BackendUtility::getRecord($table, (int) $id);
         $allowSfc = (bool) $row['tx_staticfilecache_cache'];
-        if (!$allowSfc) {
+        $hidden = isset($GLOBALS['TCA']['pages']['ctrl']['enablecolumns']['disabled']) ? (bool) $row[$GLOBALS['TCA']['pages']['ctrl']['enablecolumns']['disabled']] : false;
+        $deleted = isset($GLOBALS['TCA']['pages']['ctrl']['delete']) ? (bool) $row[$GLOBALS['TCA']['pages']['ctrl']['delete']] : false;
+        if (!$allowSfc || $hidden || $deleted) {
+
             try {
                 // Delete cache
                 $configuration = GeneralUtility::makeInstance(ConfigurationService::class);
