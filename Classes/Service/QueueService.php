@@ -57,6 +57,11 @@ class QueueService extends AbstractService
         }
 
         $identifiers = GeneralUtility::makeInstance(CacheRepository::class)->findUrlsByIdentifiers($identifiers);
+        $this->addIdentifiersOrIncreaseExisting($identifiers, $priority);
+    }
+
+    protected function addIdentifiersOrIncreaseExisting(array $identifiers, $priority): void
+    {
         $increased = array_flip(array_column($this->queueRepository->increaseCachePriorityByIdentifiers(array_keys($identifiers)), 'identifier'));
 
         $additions = [];
@@ -115,5 +120,20 @@ class QueueService extends AbstractService
         $statusCode = $this->clientService->runSingleRequest($runEntry['url']);
         $this->setResult($runEntry, $statusCode);
         return $statusCode;
+    }
+
+    /**
+     * this works without a cache identifier
+     *
+     * @param array $urls
+     * @return void
+     */
+    public function addUrls(array $urls): void
+    {
+        $urlsWithIdentifier = [];
+        foreach ($urls as $url) {
+            $urlsWithIdentifier[md5($url)] = $url;
+        }
+        $this->addIdentifiersOrIncreaseExisting($urlsWithIdentifier, self::PRIORITY_LOW);
     }
 }

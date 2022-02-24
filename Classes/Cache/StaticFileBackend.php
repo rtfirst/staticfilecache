@@ -16,6 +16,8 @@ use SFC\Staticfilecache\Service\DateTimeService;
 use SFC\Staticfilecache\Service\GeneratorService;
 use SFC\Staticfilecache\Service\QueueService;
 use SFC\Staticfilecache\Service\RemoveService;
+use SFC\Staticfilecache\Utility\UriUtility;
+use Symfony\Component\Console\Output\NullOutput;
 use TYPO3\CMS\Core\Cache\Backend\TransientBackendInterface;
 use TYPO3\CMS\Core\Utility\GeneralUtility;
 use TYPO3\CMS\Core\Utility\PathUtility;
@@ -199,9 +201,27 @@ class StaticFileBackend extends StaticDatabaseBackend implements TransientBacken
         $this->logger->debug('SFC flushByTags', [$tags]);
 
         $identifiers = [];
+        $urlsWithoutCacheInformation = [];
         foreach ($tags as $tag) {
-            $identifiers = array_merge($identifiers, $this->findIdentifiersByTagIncludingExpired($tag));
+            $identifiersForTag = $this->findIdentifiersByTagIncludingExpired($tag);
+            // if identifier is not found we remove the orphan files
+            if (!$identifiersForTag) {
+                $parts = explode('_', $tag);
+                if (count($parts) === 2 && $parts[0] === 'pageId') {
+                    try {
+                        $urlsWithoutCacheInformation = array_merge($urlsWithoutCacheInformation, GeneralUtility::makeInstance(UriUtility::class)->generate((int)$parts[1]));
+                    } catch (\Exception $exception) {
+                        $this->logger->error($exception->getMessage());
+                        continue;
+                    }
+
+                }
+            }
+            $identifiers = array_merge($identifiers, $identifiersForTag);
         }
+
+        $identifiers = array_unique($identifiers);
+        $urlsWithoutCacheInformation = array_unique($urlsWithoutCacheInformation);
 
         if ($this->isBoostMode()) {
             $priority = QueueService::PRIORITY_LOW;
@@ -211,12 +231,23 @@ class StaticFileBackend extends StaticDatabaseBackend implements TransientBacken
             }
 
             $this->getQueue()->addIdentifiers($identifiers, $priority);
+            $this->getQueue()->addUrls($urlsWithoutCacheInformation);
 
             return;
         }
 
         foreach ($identifiers as $identifier) {
             $this->removeStaticFiles($identifier);
+        }
+
+        if ($urlsWithoutCacheInformation) {
+            $identifierBuilder = GeneralUtility::makeInstance(IdentifierBuilder::class);
+            $removeService = GeneralUtility::makeInstance(RemoveService::class);
+            $output = GeneralUtility::makeInstance(NullOutput::class);
+            foreach ($urlsWithoutCacheInformation as $url) {
+                $path = dirname($identifierBuilder->getFilepath($url));
+                $removeService->removeFilesFromDirectoryAndDirectoryItselfIfEmpty($path, $output);
+            }
         }
 
         parent::flushByTags($tags);
