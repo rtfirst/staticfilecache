@@ -26,14 +26,15 @@ class UriUtility
         $cObj = GeneralUtility::makeInstance(ContentObjectRenderer::class);
 
         $pageLinkBuilder = GeneralUtility::makeInstance(PageLinkBuilder::class, $cObj);
-        $base = $site->getBase();
         $urls = [];
         foreach ($site->getLanguages() as $language) {
-            $conf = ['language' => $language->getLanguageId()];
+            $conf = [
+                'language' => $language->getLanguageId(),
+                'forceAbsoluteUrl' => true,
+            ];
             $uriParts = $pageLinkBuilder->build($linkDetails, '', '', $conf);
             if ($uriParts) {
-                $uri = $base->withPath($uriParts[0]);
-                $urls[] = (string)$uri;
+                $urls[] = (string)$uriParts[0];
             }
         }
         return $urls;
