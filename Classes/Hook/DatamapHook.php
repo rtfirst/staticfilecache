@@ -39,7 +39,8 @@ class DatamapHook extends AbstractHook
         $allowSfc = (bool) $row['tx_staticfilecache_cache'];
         $hidden = isset($GLOBALS['TCA']['pages']['ctrl']['enablecolumns']['disabled']) ? (bool) $row[$GLOBALS['TCA']['pages']['ctrl']['enablecolumns']['disabled']] : false;
         $deleted = isset($GLOBALS['TCA']['pages']['ctrl']['delete']) ? (bool) $row[$GLOBALS['TCA']['pages']['ctrl']['delete']] : false;
-        if (!$allowSfc || $hidden || $deleted) {
+        $hideIfDefaultLanguage = GeneralUtility::hideIfDefaultLanguage($row['l18n_cfg']);
+        if (!$allowSfc || $hidden || $deleted || $hideIfDefaultLanguage) {
 
             try {
                 // Delete cache

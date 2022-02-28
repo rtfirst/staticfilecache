@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace SFC\Staticfilecache\Utility;
 
+use TYPO3\CMS\Core\Http\Uri;
 use TYPO3\CMS\Core\Site\SiteFinder;
 use TYPO3\CMS\Core\Utility\GeneralUtility;
 use TYPO3\CMS\Frontend\ContentObject\ContentObjectRenderer;
@@ -26,6 +27,7 @@ class UriUtility
         $cObj = GeneralUtility::makeInstance(ContentObjectRenderer::class);
 
         $pageLinkBuilder = GeneralUtility::makeInstance(PageLinkBuilder::class, $cObj);
+        $base = $site->getBase();
         $urls = [];
         foreach ($site->getLanguages() as $language) {
             $conf = [
@@ -34,7 +36,9 @@ class UriUtility
             ];
             $uriParts = $pageLinkBuilder->build($linkDetails, '', '', $conf);
             if ($uriParts) {
-                $urls[] = (string)$uriParts[0];
+                $uriFromParts = new Uri($uriParts[0]);
+                $uri = $base->withPath($uriFromParts->getPath());
+                $urls[] = (string)$uri;
             }
         }
         return $urls;
