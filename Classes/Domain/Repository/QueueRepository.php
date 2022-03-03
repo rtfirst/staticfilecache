@@ -57,9 +57,10 @@ class QueueRepository extends AbstractRepository
         $where = $queryBuilder->expr()->andX(
             $queryBuilder->expr()->in('identifier', $identifiers)
         );
-
+        $databasePlatform = $queryBuilder->getConnection()->getDatabasePlatform();
+        $emptyString = str_repeat($databasePlatform->getStringLiteralQuoteCharacter(), 2);
         $queryBuilder->update($this->getTableName())
-            ->set('call_result', '')
+            ->set('call_result', $emptyString, false)
             ->set('cache_priority', 'cache_priority + 1', false, \PDO::PARAM_STMT)
             ->where($where)
             ->execute();
