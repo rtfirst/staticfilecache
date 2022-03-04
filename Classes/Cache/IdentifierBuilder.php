@@ -70,7 +70,7 @@ class IdentifierBuilder extends StaticFileCacheObject
             return false;
         }
         $urlParts = parse_url($requestUri);
-        $required = ['host', 'path', 'scheme'];
+        $required = ['host', 'scheme'];
         foreach ($required as $item) {
             if (!isset($urlParts[$item]) || mb_strlen($urlParts[$item]) <= 0) {
                 return false;
