@@ -87,6 +87,10 @@ class BoostQueueCommand extends AbstractCommand implements LoggerAwareInterface
 
     protected function registerSignals(): void
     {
+        if (!function_exists('pcntl_async_signals')) {
+            return;
+        }
+
         pcntl_async_signals(true);
         $signals = [SIGINT /*, SIGQUIT, SIGHUP, SIGTERM, */];
         $setStop = function()  {
@@ -101,32 +105,47 @@ class BoostQueueCommand extends AbstractCommand implements LoggerAwareInterface
         }
     }
 
-    /**
-     * @return int
-     * @throws \TYPO3\CMS\Core\Cache\Exception\NoSuchCacheException
-     * @throws \Exception
-     * @throws \Doctrine\DBAL\Driver\Exception
-     */
-    protected function execute(InputInterface $input, OutputInterface $output)
+    protected function isProcessRunning(string $identifier): ?bool
     {
-        $io = new SymfonyStyle($input, $output);
-        $this->io = $io;
-
-        $this->registerSignals();
+        if (!isset($GLOBALS['argv']) || !in_array($identifier, $GLOBALS['argv'], true)) {
+            return null;
+        }
 
         $list = [];
         exec('find /proc -mindepth 2 -maxdepth 2 -name cmdline -print0|xargs  -0 -n1', $list);
         $c = 0;
         foreach ($list as $file) {
             if (file_exists($file) && is_readable($file)) {
-                $c += preg_match('/staticfilecache:boostQueue/', file_get_contents($file));
+                $c += preg_match('/' . $identifier . '/', file_get_contents($file));
             }
         }
 
-        if ($c > 1) {
+        return $c > 1;
+    }
+
+    /**
+     * @return int
+     * @throws \TYPO3\CMS\Core\Cache\Exception\NoSuchCacheException
+     * @throws \Exception
+     * @throws \Doctrine\DBAL\Driver\Exception
+     */
+    protected function execute(InputInterface $input, OutputInterface $output): int
+    {
+        $io = new SymfonyStyle($input, $output);
+        $this->io = $io;
+
+        $isProcessRunning = $this->isProcessRunning('staticfilecache:boostQueue');
+        if ($isProcessRunning) {
             $io->isVerbose() && $io->error('Process already running');
             return Command::FAILURE;
         }
+        if (null === $isProcessRunning) {
+            $warning = 'Can not check if the process already runs';
+            $io->isVerbose() && $io->note($warning);
+            $this->logger->warning($warning);
+        }
+
+        $this->registerSignals();
 
         // reset picked items as we assume this command is the master
         $io->note('Reset items which are picked by a process and were not done for whatever reason');
@@ -177,12 +196,7 @@ class BoostQueueCommand extends AbstractCommand implements LoggerAwareInterface
 
             if (!$this->hasPool) {
                 $code = $this->queueService->runSingleRequest($runEntry);
-                if ($code !== 200) {
-                    $url = $runEntry['url'];
-                    $fileName = $this->identifierBuilder->getFilepath($url);
-                    $path = dirname($fileName);
-                    $this->removeService->removeFilesFromDirectoryAndDirectoryItselfIfEmpty($path, $this->io);
-                }
+                $this->handleCodeOnRunEntry($code,  $runEntry);
                 $this->io->progressAdvance();
                 if ($this->stop) {
                     break;
@@ -204,7 +218,7 @@ class BoostQueueCommand extends AbstractCommand implements LoggerAwareInterface
                 static function () use ($client, $url, $runEntry): string {
                     /** @noinspection JsonEncodingApiUsageInspection */
                     return json_encode([
-                       'code' => $client->get($url)->getStatusCode(),
+                       'code' => $client->get($url, ['http_errors' => false])->getStatusCode(),
                        'runEntry' => $runEntry,
                    ]);
                 },
@@ -243,20 +257,9 @@ class BoostQueueCommand extends AbstractCommand implements LoggerAwareInterface
                     $message = '';
                     if ($parts) {
                         $code = $parts['code'] ?: 900;
-                        $this->queueService->setResult($parts['runEntry'], $code);
-
-                        // if the code is not ok, remove the static file so newly created sys_redirects and so on will not end up serving old html
-                        if ($code !== 200) {
-                            $url = $parts['runEntry']['url'];
-                            $fileName = $this->identifierBuilder->getFilepath($url);
-                            $path = dirname($fileName);
-                            $this->removeService->removeFilesFromDirectoryAndDirectoryItselfIfEmpty($path, $this->io);
-                        }
-
+                        $this->handleCodeOnRunEntry($code, $parts['runEntry']);
                         $message = $parts['runEntry']['url'] . ' returned status code ' . $parts['code'];
                     }
-
-
 
                     $this->io->progressAdvance();
                     return $message;
@@ -275,6 +278,39 @@ class BoostQueueCommand extends AbstractCommand implements LoggerAwareInterface
         $this->dispatchPoolEvent();
 
         return Command::SUCCESS;
+    }
+
+    /**
+     * @throws \Exception
+     */
+    protected function handleCodeOnRunEntry(int $code, array $runEntry): void
+    {
+        $this->queueService->setResult($runEntry, $code);
+
+        // warmup done, all right
+        if ($code < 299) {
+            return;
+        }
+
+        // 3xx 4xx we do no keep the cache file in FS
+        if ($code < 500) {
+            $this->removeFromFileSystem($runEntry['url']);
+            return;
+        }
+
+        // write a message to the database we can see later on
+        $runEntry['error'] = 'HTTP return code ' . $code . ' received';
+        $this->queueRepository->update($runEntry);
+    }
+
+    /**
+     * @throws \Exception
+     */
+    protected function removeFromFileSystem(string $url): void
+    {
+        $fileName = $this->identifierBuilder->getFilepath($url);
+        $path = dirname($fileName);
+        $this->removeService->removeFilesFromDirectoryAndDirectoryItselfIfEmpty($path, $this->io);
     }
 
     protected function dispatchPoolEvent(): void
@@ -352,9 +388,6 @@ class BoostQueueCommand extends AbstractCommand implements LoggerAwareInterface
         return true;
     }
 
-    /**
-     * @throws \Doctrine\DBAL\Driver\Exception
-     */
     protected function cleanupQueue(SymfonyStyle $io): void
     {
         $rows = $this->queueRepository->findOld();
