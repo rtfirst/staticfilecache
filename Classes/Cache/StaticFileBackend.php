@@ -8,6 +8,7 @@ declare(strict_types=1);
 
 namespace SFC\Staticfilecache\Cache;
 
+use Exception;
 use Psr\Http\Message\ResponseInterface;
 use SFC\Staticfilecache\Domain\Repository\CacheRepository;
 use SFC\Staticfilecache\Service\CacheService;
@@ -86,7 +87,7 @@ class StaticFileBackend extends StaticDatabaseBackend implements TransientBacken
             $this->removeStaticFiles($entryIdentifier);
 
             GeneralUtility::makeInstance(GeneratorService::class)->generate($entryIdentifier, $fileName, $data, $realLifetime);
-        } catch (\Exception $exception) {
+        } catch (Exception $exception) {
             $this->logger->error('Error in cache create process', ['exception' => $exception]);
         }
     }
@@ -210,7 +211,7 @@ class StaticFileBackend extends StaticDatabaseBackend implements TransientBacken
                 if (count($parts) === 2 && $parts[0] === 'pageId') {
                     try {
                         $urlsWithoutCacheInformation = array_merge($urlsWithoutCacheInformation, GeneralUtility::makeInstance(UriUtility::class)->generate((int)$parts[1]));
-                    } catch (\Exception $exception) {
+                    } catch (Exception $exception) {
                         $this->logger->error($exception->getMessage());
                         continue;
                     }
