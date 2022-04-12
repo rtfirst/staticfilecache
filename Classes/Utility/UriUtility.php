@@ -9,6 +9,7 @@ use TYPO3\CMS\Core\Site\SiteFinder;
 use TYPO3\CMS\Core\Utility\GeneralUtility;
 use TYPO3\CMS\Frontend\ContentObject\ContentObjectRenderer;
 use TYPO3\CMS\Frontend\Typolink\PageLinkBuilder;
+use TYPO3\CMS\Frontend\Typolink\UnableToLinkException;
 
 class UriUtility
 {
@@ -16,7 +17,6 @@ class UriUtility
      * @param int $pageUid
      * @return array
      * @throws \TYPO3\CMS\Core\Exception\SiteNotFoundException
-     * @throws \TYPO3\CMS\Frontend\Typolink\UnableToLinkException
      */
     public function generate(int $pageUid): array
     {
@@ -34,7 +34,11 @@ class UriUtility
                 'language' => $language->getLanguageId(),
                 'forceAbsoluteUrl' => true,
             ];
-            $uriParts = $pageLinkBuilder->build($linkDetails, '', '', $conf);
+            try {
+                $uriParts = $pageLinkBuilder->build($linkDetails, '', '', $conf);
+            } catch (UnableToLinkException $e) {
+                continue;
+            }
             if ($uriParts) {
                 $uriFromParts = new Uri($uriParts[0]);
                 $uri = $base->withPath($uriFromParts->getPath());
