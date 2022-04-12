@@ -20,6 +20,8 @@ use SFC\Staticfilecache\Service\RemoveService;
 use SFC\Staticfilecache\Utility\UriUtility;
 use Symfony\Component\Console\Output\NullOutput;
 use TYPO3\CMS\Core\Cache\Backend\TransientBackendInterface;
+use TYPO3\CMS\Core\Database\Connection;
+use TYPO3\CMS\Core\Database\ConnectionPool;
 use TYPO3\CMS\Core\Utility\GeneralUtility;
 use TYPO3\CMS\Core\Utility\PathUtility;
 use TYPO3\CMS\Core\Utility\StringUtility;
@@ -202,27 +204,51 @@ class StaticFileBackend extends StaticDatabaseBackend implements TransientBacken
         $this->logger->debug('SFC flushByTags', [$tags]);
 
         $identifiers = [];
-        $urlsWithoutCacheInformation = [];
+        $orphaned = [];
+        $identifiersForTags = [];
         foreach ($tags as $tag) {
             $identifiersForTag = $this->findIdentifiersByTagIncludingExpired($tag);
-            // if identifier is not found we remove the orphan files
+            // in rare cases the pageUid has no correspondenting identifiers
             if (!$identifiersForTag) {
                 $parts = explode('_', $tag);
                 if (count($parts) === 2 && $parts[0] === 'pageId') {
-                    try {
-                        $urlsWithoutCacheInformation = array_merge($urlsWithoutCacheInformation, GeneralUtility::makeInstance(UriUtility::class)->generate((int)$parts[1]));
-                    } catch (Exception $exception) {
-                        $this->logger->error($exception->getMessage());
-                        continue;
-                    }
-
+                    $orphaned[(int)$parts[1]] = 1;
                 }
             }
-            $identifiers = array_merge($identifiers, $identifiersForTag);
+            $identifiersForTags[] = $identifiersForTag;
         }
+        $identifiers = array_merge($identifiers, ...$identifiersForTags);
 
+        // only use non-localization rows
+        $urlsWithoutCacheInformation = [];
+        $urlsWithoutCacheInformations = [];
+        if ($orphaned) {
+            $queryBuilder = GeneralUtility::makeInstance(ConnectionPool::class)->getQueryBuilderForTable('pages');
+            $result = $queryBuilder->select('*')
+                ->from('pages')
+                ->where(
+                    $queryBuilder->expr()->in(
+                        'uid',
+                        $queryBuilder->createNamedParameter(array_keys($orphaned), Connection::PARAM_INT_ARRAY)
+                    ),
+                    $queryBuilder->expr()->eq(
+                        $GLOBALS['TCA']['pages']['ctrl']['languageField'],
+                        $queryBuilder->createNamedParameter(0, Connection::PARAM_INT)
+                    )
+                )
+                ->execute();
+
+            while ($row = $result->fetchAssociative()) {
+                try {
+                    $urlsWithoutCacheInformations[] = GeneralUtility::makeInstance(UriUtility::class)->generate((int)$row['uid']);
+                } catch (Exception $exception) {
+                    continue;
+                }
+            }
+
+            $urlsWithoutCacheInformation = array_flip(array_flip(array_merge([], ...$urlsWithoutCacheInformations)));
+        }
         $identifiers = array_unique($identifiers);
-        $urlsWithoutCacheInformation = array_unique($urlsWithoutCacheInformation);
 
         if ($this->isBoostMode()) {
             $priority = QueueService::PRIORITY_LOW;
