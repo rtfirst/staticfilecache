@@ -37,6 +37,14 @@ use TYPO3\CMS\Frontend\Controller\TypoScriptFrontendController;
  */
 class StaticFileBackend extends StaticDatabaseBackend implements TransientBackendInterface
 {
+    protected IdentifierBuilder $identifierBuilder;
+
+    public function __construct($context, array $options = [])
+    {
+        parent::__construct($context, $options);
+        $this->identifierBuilder = GeneralUtility::makeInstance(IdentifierBuilder::class);
+    }
+
     /**
      * Saves data in the cache.
      *
@@ -68,9 +76,7 @@ class StaticFileBackend extends StaticDatabaseBackend implements TransientBacken
         }
 
         $this->logger->debug('SFC Set', [$entryIdentifier, $tags, $lifetime]);
-
-        $identifierBuilder = GeneralUtility::makeInstance(IdentifierBuilder::class);
-        $fileName = $identifierBuilder->getFilepath($entryIdentifier);
+        $fileName = $this->identifierBuilder->getFilepath($entryIdentifier);
 
         try {
             // Create dir
@@ -80,10 +86,11 @@ class StaticFileBackend extends StaticDatabaseBackend implements TransientBacken
             }
 
             $databaseData['url'] = $entryIdentifier;
-            $entryIdentifierForDatabase = $this->hash($entryIdentifier);
+            $entryIdentifierForDatabase = $this->identifierBuilder->hash($entryIdentifier);
 
             // call set in front of the generation, because the set method
             // of the DB backend also call remove (this remove do not remove the folder already created above)
+            $this->removeFromDatabase($entryIdentifierForDatabase);
             parent::set($entryIdentifierForDatabase, serialize($databaseData), $tags, $realLifetime);
 
             $this->removeStaticFiles($entryIdentifier);
@@ -106,7 +113,7 @@ class StaticFileBackend extends StaticDatabaseBackend implements TransientBacken
         if (!$this->has($entryIdentifier)) {
             return false;
         }
-        $result = parent::get($entryIdentifier);
+        $result = parent::get($this->identifierBuilder->hash($entryIdentifier));
         if (!\is_string($result)) {
             return false;
         }
@@ -123,7 +130,17 @@ class StaticFileBackend extends StaticDatabaseBackend implements TransientBacken
      */
     public function has($entryIdentifier)
     {
-        return $entryIdentifier && (is_file($this->getFilepath($entryIdentifier)) || parent::has($entryIdentifier));
+        if (!$entryIdentifier) {
+            return false;
+        }
+
+        if (GeneralUtility::isValidUrl($entryIdentifier)) {
+            $entryIdentifierForDatabase = $this->identifierBuilder->hash($entryIdentifier);
+        } else {
+            $entryIdentifierForDatabase = $entryIdentifier;
+        }
+
+        return is_file($this->getFilepath($entryIdentifier)) && parent::has($entryIdentifierForDatabase);
     }
 
     /**
@@ -324,11 +341,6 @@ class StaticFileBackend extends StaticDatabaseBackend implements TransientBacken
         }
     }
 
-    protected function hash(string $entryIdentifier): string
-    {
-        return hash('sha256', $entryIdentifier);
-    }
-
     /**
      * Get prority.
      *
@@ -351,17 +363,21 @@ class StaticFileBackend extends StaticDatabaseBackend implements TransientBacken
 
     protected function getFilepath(string $entryIdentifier): string
     {
-        $data = parent::get($entryIdentifier);
-        if (!$data) {
-            return '';
-        }
+        if (GeneralUtility::isValidUrl($entryIdentifier)) {
+            $url = $entryIdentifier;
+        } else {
+            $data = parent::get($entryIdentifier);
+            if (!$data) {
+                return '';
+            }
 
-        $entry = unserialize($data, ['allowed_classes' => false]);
-        if (empty($entry['url'])) {
-            return '';
-        }
+            $entry = unserialize($data, ['allowed_classes' => false]);
+            if (empty($entry['url'])) {
+                return '';
+            }
 
-        $url = $entry['url'];
+            $url = $entry['url'];
+        }
         $identifierBuilder = GeneralUtility::makeInstance(IdentifierBuilder::class);
 
         return $identifierBuilder->getFilepath($url);
@@ -410,5 +426,23 @@ class StaticFileBackend extends StaticDatabaseBackend implements TransientBacken
     protected function isBoostMode(): bool
     {
         return (bool) $this->configuration->get('boostMode');
+    }
+
+    protected function removeFromDatabase(string $entryIdentifierForDatabase)
+    {
+        GeneralUtility::makeInstance(ConnectionPool::class)
+            ->getConnectionForTable($this->cacheTable)
+            ->delete(
+                $this->cacheTable,
+                [
+                    'identifier' => $entryIdentifierForDatabase,
+                ]
+            );
+
+        GeneralUtility::makeInstance(ConnectionPool::class)
+            ->getConnectionForTable($this->tagsTable)
+            ->delete($this->tagsTable, [
+                'identifier' => $entryIdentifierForDatabase,
+            ]);
     }
 }
