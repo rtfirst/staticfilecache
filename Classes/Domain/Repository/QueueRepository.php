@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace SFC\Staticfilecache\Domain\Repository;
 
+use TYPO3\CMS\Extbase\Persistence\QueryResultInterface;
+
 /**
  * QueueRepository.
  */
@@ -14,54 +16,111 @@ class QueueRepository extends AbstractRepository
      *
      * @param int $limit
      */
-    public function findOpen($limit = 999): array
+    public function findOpen(int $limit = 99999999): array
     {
         $queryBuilder = $this->createQuery();
 
-        return (array) $queryBuilder->select('*')
+        return $queryBuilder->select('*')
             ->from($this->getTableName())
-            ->where($queryBuilder->expr()->eq('call_date', 0))
+            ->where(
+                $queryBuilder->expr()->eq('call_date', 0),
+                $queryBuilder->expr()->isNull('error'),
+            )
             ->setMaxResults($limit)
             ->orderBy('cache_priority', 'desc')
             ->execute()
-            ->fetchAll()
+            ->fetchAllAssociative()
         ;
     }
 
     /**
-     * Find open by identnfier.
-     *
-     * @param string $identifier
+     * @param array $identifier
+     * @return array<string>
+     * @throws \Doctrine\DBAL\Driver\Exception
      */
-    public function countOpenByIdentifier($identifier): int
+    public function increaseCachePriorityByIdentifiers(array $identifiers): array
     {
-        $queryBuilder = $this->createQuery();
-        $where = $queryBuilder->expr()->andX(
-            $queryBuilder->expr()->eq('cache_url', $queryBuilder->createNamedParameter($identifier)),
-            $queryBuilder->expr()->eq('call_date', 0)
-        );
+        $c = count($identifiers);
+        if ($c === 0) {
+            return [];
+        }
 
-        return (int) $queryBuilder->select('uid')
+        $queryBuilder = $this->createQuery();
+        for ($i = 0; $i < $c; $i++) {
+            $identifiers[$i] = $queryBuilder->quote($identifiers[$i]);
+        }
+
+        $where = $queryBuilder->expr()->andX(
+            $queryBuilder->expr()->in('identifier', $identifiers)
+        );
+        $databasePlatform = $queryBuilder->getConnection()->getDatabasePlatform();
+        $emptyString = str_repeat($databasePlatform->getStringLiteralQuoteCharacter(), 2);
+        $queryBuilder->update($this->getTableName())
+            ->set('call_result', $emptyString, false)
+            ->set('cache_priority', 'cache_priority + 1', false, \PDO::PARAM_STMT)
+            ->where($where)
+            ->execute();
+
+        $queryBuilder = $this->createQuery();
+        return $queryBuilder->
+
+        select('*')
             ->from($this->getTableName())
             ->where($where)
             ->execute()
-            ->rowCount()
+            ->fetchAllAssociative() ?: []
         ;
     }
 
-    /**
-     * Find old entries.
-     */
     public function findOld(): array
     {
         $queryBuilder = $this->createQuery();
 
-        return (array) $queryBuilder->select('uid')
+        return $queryBuilder->select('uid')
             ->from($this->getTableName())
-            ->where($queryBuilder->expr()->gt('call_date', 0))
+            ->where(
+                $queryBuilder->expr()->isNull('error'),
+                $queryBuilder->expr()->neq('call_result', $queryBuilder->quote(''))
+            )
             ->execute()
-            ->fetchAll()
-        ;
+            ->fetchAllAssociative();
+    }
+
+    public function findError(): array
+    {
+        $queryBuilder = $this->createQuery();
+
+        return $queryBuilder->select('*')
+            ->from($this->getTableName())
+            ->where(
+                $queryBuilder->expr()->isNotNull('error'),
+            )
+            ->execute()
+            ->fetchAllAssociative();
+    }
+
+    public function findByStatus(int $status): array
+    {
+        $queryBuilder = $this->createQuery();
+
+        return $queryBuilder->select('*')
+            ->from($this->getTableName())
+            ->where(
+                $queryBuilder->expr()->eq('call_result', $status)
+            )
+            ->execute()
+            ->fetchAllAssociative();
+    }
+
+    public function findStatistical()
+    {
+        $queryBuilder = $this->createQuery();
+        return $queryBuilder->select('*')
+            ->from($this->getTableName())
+            ->orderBy('error', 'DESC')
+            ->addOrderBy('cache_priority')
+            ->addOrderBy('call_result')
+            ->execute();
     }
 
     /**

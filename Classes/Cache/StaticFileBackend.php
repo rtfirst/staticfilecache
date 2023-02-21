@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace SFC\Staticfilecache\Cache;
 
 use Psr\EventDispatcher\EventDispatcherInterface;
+use Exception;
 use Psr\Http\Message\ResponseInterface;
 use SFC\Staticfilecache\Domain\Repository\CacheRepository;
 use SFC\Staticfilecache\Domain\Repository\QueueRepository;
@@ -15,7 +16,11 @@ use SFC\Staticfilecache\Service\DateTimeService;
 use SFC\Staticfilecache\Service\GeneratorService;
 use SFC\Staticfilecache\Service\QueueService;
 use SFC\Staticfilecache\Service\RemoveService;
+use SFC\Staticfilecache\Utility\UriUtility;
+use Symfony\Component\Console\Output\NullOutput;
 use TYPO3\CMS\Core\Cache\Backend\TransientBackendInterface;
+use TYPO3\CMS\Core\Database\Connection;
+use TYPO3\CMS\Core\Database\ConnectionPool;
 use TYPO3\CMS\Core\Utility\GeneralUtility;
 use TYPO3\CMS\Core\Utility\PathUtility;
 use TYPO3\CMS\Frontend\Controller\TypoScriptFrontendController;
@@ -29,6 +34,14 @@ use TYPO3\CMS\Frontend\Controller\TypoScriptFrontendController;
  */
 class StaticFileBackend extends StaticDatabaseBackend implements TransientBackendInterface
 {
+    protected IdentifierBuilder $identifierBuilder;
+
+    public function __construct($context, array $options = [])
+    {
+        parent::__construct($context, $options);
+        $this->identifierBuilder = GeneralUtility::makeInstance(IdentifierBuilder::class);
+    }
+
     /**
      * Saves data in the cache.
      *
@@ -60,9 +73,7 @@ class StaticFileBackend extends StaticDatabaseBackend implements TransientBacken
         }
 
         $this->logger->debug('SFC Set', [$entryIdentifier, $tags, $lifetime]);
-
-        $identifierBuilder = GeneralUtility::makeInstance(IdentifierBuilder::class);
-        $fileName = $identifierBuilder->getFilepath($entryIdentifier);
+        $fileName = $this->identifierBuilder->getFilepath($entryIdentifier);
 
         try {
             // Create dir
@@ -71,21 +82,18 @@ class StaticFileBackend extends StaticDatabaseBackend implements TransientBacken
                 GeneralUtility::mkdir_deep($cacheDir);
             }
 
-            if ($this->isHashedIdentifier()) {
-                $databaseData['url'] = $entryIdentifier;
-                $entryIdentifierForDatabase = $this->hash($entryIdentifier);
-            } else {
-                $entryIdentifierForDatabase = $entryIdentifier;
-            }
+            $databaseData['url'] = $entryIdentifier;
+            $entryIdentifierForDatabase = $this->identifierBuilder->hash($entryIdentifier);
 
             // call set in front of the generation, because the set method
             // of the DB backend also call remove (this remove do not remove the folder already created above)
+            $this->removeFromDatabase($entryIdentifierForDatabase);
             parent::set($entryIdentifierForDatabase, serialize($databaseData), $tags, $realLifetime);
 
             $this->removeStaticFiles($entryIdentifier);
 
             GeneralUtility::makeInstance(GeneratorService::class)->generate($entryIdentifier, $fileName, $data, $realLifetime);
-        } catch (\Exception $exception) {
+        } catch (Exception $exception) {
             $this->logger->error('Error in cache create process', ['exception' => $exception]);
         }
     }
@@ -102,12 +110,12 @@ class StaticFileBackend extends StaticDatabaseBackend implements TransientBacken
         if (!$this->has($entryIdentifier)) {
             return false;
         }
-        $result = parent::get($entryIdentifier);
+        $result = parent::get($this->identifierBuilder->hash($entryIdentifier));
         if (!\is_string($result)) {
             return false;
         }
 
-        return unserialize($result);
+        return unserialize($result, ['allowed_classes' => false]);
     }
 
     /**
@@ -119,7 +127,17 @@ class StaticFileBackend extends StaticDatabaseBackend implements TransientBacken
      */
     public function has($entryIdentifier)
     {
-        return is_file($this->getFilepath($entryIdentifier)) || parent::has($entryIdentifier);
+        if (!$entryIdentifier) {
+            return false;
+        }
+
+        if (GeneralUtility::isValidUrl($entryIdentifier)) {
+            $entryIdentifierForDatabase = $this->identifierBuilder->hash($entryIdentifier);
+        } else {
+            $entryIdentifierForDatabase = $entryIdentifier;
+        }
+
+        return is_file($this->getFilepath($entryIdentifier)) && parent::has($entryIdentifierForDatabase);
     }
 
     /**
@@ -141,7 +159,7 @@ class StaticFileBackend extends StaticDatabaseBackend implements TransientBacken
 
         if ($this->isBoostMode()) {
             $this->getQueue()
-                ->addIdentifier($entryIdentifier)
+                ->addIdentifiers([$entryIdentifier])
             ;
 
             return true;
@@ -200,9 +218,51 @@ class StaticFileBackend extends StaticDatabaseBackend implements TransientBacken
         $this->logger->debug('SFC flushByTags', [$tags]);
 
         $identifiers = [];
+        $orphaned = [];
+        $identifiersForTags = [];
         foreach ($tags as $tag) {
-            $identifiers = array_merge($identifiers, $this->findIdentifiersByTagIncludingExpired($tag));
+            $identifiersForTag = $this->findIdentifiersByTagIncludingExpired($tag);
+            // in rare cases the pageUid has no correspondenting identifiers
+            if (!$identifiersForTag) {
+                $parts = explode('_', $tag);
+                if (count($parts) === 2 && $parts[0] === 'pageId') {
+                    $orphaned[(int)$parts[1]] = 1;
+                }
+            }
+            $identifiersForTags[] = $identifiersForTag;
         }
+        $identifiers = array_merge($identifiers, ...$identifiersForTags);
+
+        // only use non-localization rows
+        $urlsWithoutCacheInformation = [];
+        $urlsWithoutCacheInformations = [];
+        if ($orphaned) {
+            $queryBuilder = GeneralUtility::makeInstance(ConnectionPool::class)->getQueryBuilderForTable('pages');
+            $result = $queryBuilder->select('*')
+                ->from('pages')
+                ->where(
+                    $queryBuilder->expr()->in(
+                        'uid',
+                        $queryBuilder->createNamedParameter(array_keys($orphaned), Connection::PARAM_INT_ARRAY)
+                    ),
+                    $queryBuilder->expr()->eq(
+                        $GLOBALS['TCA']['pages']['ctrl']['languageField'],
+                        $queryBuilder->createNamedParameter(0, Connection::PARAM_INT)
+                    )
+                )
+                ->execute();
+
+            while ($row = $result->fetchAssociative()) {
+                try {
+                    $urlsWithoutCacheInformations[] = GeneralUtility::makeInstance(UriUtility::class)->generate((int)$row['uid']);
+                } catch (Exception $exception) {
+                    continue;
+                }
+            }
+
+            $urlsWithoutCacheInformation = array_flip(array_flip(array_merge([], ...$urlsWithoutCacheInformations)));
+        }
+        $identifiers = array_unique($identifiers);
 
         if ($this->isBoostMode()) {
             $priority = QueueService::PRIORITY_LOW;
@@ -212,12 +272,23 @@ class StaticFileBackend extends StaticDatabaseBackend implements TransientBacken
             }
 
             $this->getQueue()->addIdentifiers($identifiers, $priority);
+            $this->getQueue()->addUrls($urlsWithoutCacheInformation);
 
             return;
         }
 
         foreach ($identifiers as $identifier) {
             $this->removeStaticFiles($identifier);
+        }
+
+        if ($urlsWithoutCacheInformation) {
+            $identifierBuilder = GeneralUtility::makeInstance(IdentifierBuilder::class);
+            $removeService = GeneralUtility::makeInstance(RemoveService::class);
+            $output = GeneralUtility::makeInstance(NullOutput::class);
+            foreach ($urlsWithoutCacheInformation as $url) {
+                $path = dirname($identifierBuilder->getFilepath($url));
+                $removeService->removeFilesFromDirectoryAndDirectoryItselfIfEmpty($path, $output);
+            }
         }
 
         parent::flushByTags($tags);
@@ -240,6 +311,7 @@ class StaticFileBackend extends StaticDatabaseBackend implements TransientBacken
         if ($this->isBoostMode()) {
             $this->getQueue()->addIdentifiers($identifiers);
 
+
             return;
         }
 
@@ -251,25 +323,19 @@ class StaticFileBackend extends StaticDatabaseBackend implements TransientBacken
 
     /**
      * Does garbage collection.
-     *
-     * Note: Do not check boostmode. If we check boost mode, we get the problem, that the core garbage collection drop
-     * the DB related part of StaticFileCache but not the files, because the "garbage collection" works directly on
-     * the caching backends and not on the caches itself. By ignoring the boost mode in this function we take care,
-     * that the StaticFileCache drop the file AND the db representation. Please take care, that you select both backends
-     * in the garbage collection task in the Scheduler.
      */
     public function collectGarbage(): void
     {
         $expiredIdentifiers = GeneralUtility::makeInstance(CacheRepository::class)->findExpiredIdentifiers();
+        if ($this->isBoostMode()) {
+            $this->getQueue()->addIdentifiers($expiredIdentifiers);
+            parent::collectGarbage();
+            return;
+        }
         parent::collectGarbage();
         foreach ($expiredIdentifiers as $identifier) {
             $this->removeStaticFiles($identifier);
         }
-    }
-
-    protected function hash(string $entryIdentifier): string
-    {
-        return hash('sha256', $entryIdentifier);
     }
 
     /**
@@ -292,23 +358,22 @@ class StaticFileBackend extends StaticDatabaseBackend implements TransientBacken
         return $priority;
     }
 
-    /**
-     * Get the cache folder for the given entry.
-     *
-     * @param $entryIdentifier
-     */
     protected function getFilepath(string $entryIdentifier): string
     {
-        $url = $entryIdentifier;
-        if ($this->isHashedIdentifier()) {
+        if (GeneralUtility::isValidUrl($entryIdentifier)) {
+            $url = $entryIdentifier;
+        } else {
             $data = parent::get($entryIdentifier);
             if (!$data) {
                 return '';
             }
-            $entry = unserialize($data);
-            if (!empty($entry['url'])) {
-                $url = $entry['url'];
+
+            $entry = unserialize($data, ['allowed_classes' => false]);
+            if (empty($entry['url'])) {
+                return '';
             }
+
+            $url = $entry['url'];
         }
         $identifierBuilder = GeneralUtility::makeInstance(IdentifierBuilder::class);
 
@@ -376,11 +441,21 @@ class StaticFileBackend extends StaticDatabaseBackend implements TransientBacken
         return (bool) $this->configuration->get('boostMode');
     }
 
-    /**
-     * Check if the "hashUriInCache" feature is enabled.
-     */
-    protected function isHashedIdentifier(): bool
+    protected function removeFromDatabase(string $entryIdentifierForDatabase)
     {
-        return (bool) $this->configuration->isBool('hashUriInCache');
+        GeneralUtility::makeInstance(ConnectionPool::class)
+            ->getConnectionForTable($this->cacheTable)
+            ->delete(
+                $this->cacheTable,
+                [
+                    'identifier' => $entryIdentifierForDatabase,
+                ]
+            );
+
+        GeneralUtility::makeInstance(ConnectionPool::class)
+            ->getConnectionForTable($this->tagsTable)
+            ->delete($this->tagsTable, [
+                'identifier' => $entryIdentifierForDatabase,
+            ]);
     }
 }
