@@ -13,9 +13,6 @@ class AfterPackageDeactivationListener
 {
     public function __invoke(AfterPackageDeactivationEvent $event): void
     {
-        $configuration = GeneralUtility::makeInstance(ConfigurationService::class);
-        $configuration->override('boostMode', '0');
-
         $cacheService = GeneralUtility::makeInstance(CacheService::class);
         $cacheService->get()->flush();
     }

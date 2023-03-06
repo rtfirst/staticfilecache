@@ -265,6 +265,11 @@ class StaticFileBackend extends StaticDatabaseBackend implements TransientBacken
     public function collectGarbage(): void
     {
         $expiredIdentifiers = GeneralUtility::makeInstance(CacheRepository::class)->findExpiredIdentifiers();
+        if ($this->isBoostMode()) {
+            $this->getQueue()->addIdentifiers($expiredIdentifiers);
+            parent::collectGarbage();
+            return;
+        }
         parent::collectGarbage();
         foreach ($expiredIdentifiers as $identifier) {
             $this->removeStaticFiles($identifier);
