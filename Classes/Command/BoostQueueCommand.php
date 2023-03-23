@@ -135,7 +135,6 @@ class BoostQueueCommand extends AbstractCommand implements LoggerAwareInterface
     {
         $io = new SymfonyStyle($input, $output);
         $this->io = $io;
-
         $isProcessRunning = $this->isProcessRunning('staticfilecache:boostQueue');
         if ($isProcessRunning) {
             $io->isVerbose() && $io->error('Process already running');
@@ -273,9 +272,6 @@ class BoostQueueCommand extends AbstractCommand implements LoggerAwareInterface
         if ($this->hasPool) {
             $this->pool->wait();
         }
-
-        $io->progressFinish();
-        $io->success(count($rows) . ' items are done (perhaps not all are processed).');
 
         $this->dispatchPoolEvent();
 
