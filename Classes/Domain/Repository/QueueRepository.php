@@ -54,7 +54,7 @@ class QueueRepository extends AbstractRepository
     }
 
     /**
-     * @param array $identifier
+     * @param array<string> $identifier
      * @return array<string>
      * @throws \Doctrine\DBAL\Driver\Exception
      */
