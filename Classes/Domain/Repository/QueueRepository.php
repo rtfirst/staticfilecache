@@ -42,7 +42,7 @@ class QueueRepository extends AbstractRepository
     {
         $queryBuilder = $this->createQuery();
         $where = $queryBuilder->expr()->and(
-            $queryBuilder->expr()->eq('cache_url', $queryBuilder->createNamedParameter($identifier)),
+            $queryBuilder->expr()->eq('identifier', $queryBuilder->createNamedParameter($identifier)),
             $queryBuilder->expr()->eq('call_date', 0)
         );
 

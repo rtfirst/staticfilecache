@@ -92,13 +92,13 @@ class QueueService extends AbstractService
         $this->configurationService->override('boostMode', '0');
         $cache = $this->cacheService->get();
 
-        if ($cache->has($runEntry['cache_url'])) {
-            $cache->remove($runEntry['cache_url']);
+        if ($cache->has($runEntry['url'])) {
+            $cache->remove($runEntry['url']);
         }
 
         $this->logger->debug('SFC Queue run', $runEntry);
 
-        $statusCode = $this->clientService->runSingleRequest($runEntry['cache_url']);
+        $statusCode = $this->clientService->runSingleRequest($runEntry['url']);
 
         $data = [
             'call_date' => time(),
