@@ -114,3 +114,6 @@ user =
 
 # cat=basic; type=string; label=Basic auth pass
 pass =
+
+# cat=basic; type=string; label=If the boostqueue failed retry up to n times
+retries = 3

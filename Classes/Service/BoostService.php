@@ -63,13 +63,6 @@ class BoostService implements LoggerAwareInterface
     public function process(int $concurrency, bool $avoidCleanup, int $limit, SymfonyStyle $io, callable $shouldStop = null): void
     {
         $this->io = $io;
-        // reset picked items as we assume this command is the master
-        $io->note('Reset items which are picked by a process and were not done for whatever reason');
-        $entries = $this->queueRepository->findStatistical();
-        while ($row = $entries->fetchAssociative()) {
-            $row['call_date'] = 0;
-            $this->queueRepository->update($row);
-        }
 
         if ($concurrency) {
             $this->concurrency = $concurrency;
@@ -89,10 +82,6 @@ class BoostService implements LoggerAwareInterface
             $io->note('Async ability not available');
         }
 
-        if (!$avoidCleanup) {
-            $this->cleanupQueue($io);
-        }
-
         $limit = $limit > 0 ? $limit : 5000;
         $rows = $this->queueRepository->findOpen($limit);
 
@@ -102,6 +91,7 @@ class BoostService implements LoggerAwareInterface
                 $this->stop();
             }
             $runEntry['call_date'] = time();
+            $runEntry['retries']++;
             $this->queueRepository->update($runEntry);
 
             try {
@@ -177,6 +167,7 @@ class BoostService implements LoggerAwareInterface
                     $message = '';
                     if ($parts) {
                         $code = $parts['code'] ?: 900;
+                        $parts['runEntry']['error'] = null;
                         $this->handleCodeOnRunEntry($code, $parts['runEntry']);
                         $message = $parts['runEntry']['url'] . ' returned status code ' . $parts['code'];
                     }
@@ -193,6 +184,11 @@ class BoostService implements LoggerAwareInterface
         }
 
         $io->progressFinish();
+
+        if (!$avoidCleanup) {
+            $this->cleanupQueue($io);
+        }
+
         $this->dispatchPoolEvent();
     }
 

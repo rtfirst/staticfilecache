@@ -37,6 +37,7 @@
 					<th>HTTP Status</th>
 					<th>Picked by a process</th>
 					<th style="color:red;">Error</th>
+					<th>Tries</th>
 				</tr>
 					<f:for each="{errors}" as="error">
 					<tr>
@@ -49,6 +50,7 @@
 							</f:if>
 						</td>
 						<td>{error.error}</td>
+						<td>{error.tries}</td>
 					</tr>
 					</f:for>
 			</table>

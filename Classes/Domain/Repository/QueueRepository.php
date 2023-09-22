@@ -5,12 +5,19 @@ declare(strict_types=1);
 namespace SFC\Staticfilecache\Domain\Repository;
 
 use Doctrine\DBAL\Result;
+use SFC\Staticfilecache\Service\ConfigurationService;
 
 /**
  * QueueRepository.
  */
 class QueueRepository extends AbstractRepository
 {
+    protected ConfigurationService $configurationService;
+    public function __construct(ConfigurationService $configurationService)
+    {
+        $this->configurationService = $configurationService;
+    }
+
     /**
      * Find the entries for the worker.
      *
@@ -23,8 +30,13 @@ class QueueRepository extends AbstractRepository
         return $queryBuilder->select('*')
             ->from($this->getTableName())
             ->where(
-                $queryBuilder->expr()->eq('call_date', 0),
-                $queryBuilder->expr()->isNull('error'),
+                $queryBuilder->expr()->or(
+                    $queryBuilder->expr()->eq('call_date', 0),
+                    $queryBuilder->expr()->or(
+                        $queryBuilder->expr()->isNull('error'),
+                        $queryBuilder->expr()->lt('retries', $this->configurationService->getRetries()),
+                    )
+                )
             )
             ->setMaxResults($limit)
             ->orderBy('cache_priority', 'desc')
@@ -78,6 +90,7 @@ class QueueRepository extends AbstractRepository
         $queryBuilder->update($this->getTableName())
             ->set('call_result', $emptyString, false)
             ->set('error', null)
+            ->set('retries', 0)
             ->set('cache_priority', 'cache_priority + 1', false, \PDO::PARAM_STMT)
             ->where($where)
             ->executeStatement();

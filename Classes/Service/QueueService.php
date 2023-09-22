@@ -63,6 +63,7 @@ class QueueService extends AbstractService
                     'cache_priority' => $overridePriority,
                     'error' => null,
                     'call_date' => 0,
+                    'retries' => 0,
                 ];
             }
         }
@@ -132,6 +133,7 @@ class QueueService extends AbstractService
         $this->configurationService->override('boostMode', '0');
         $cache = $this->cacheService->get();
         $data = [
+            'error' => $runEntry['error'],
             'call_date' => time(),
             'call_result' => $statusCode,
         ];

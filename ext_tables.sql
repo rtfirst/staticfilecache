@@ -21,6 +21,7 @@ CREATE TABLE tx_staticfilecache_queue (
 	call_date int(11) DEFAULT '0' NOT NULL,
 	call_result varchar(255) NOT NULL,
 	error mediumtext,
+	retries tinyint(3) DEFAULT '0' NOT NULL,
 	PRIMARY KEY (uid),
 	INDEX idx_call_date (call_date),
 	UNIQUE idx_identifier (identifier)
