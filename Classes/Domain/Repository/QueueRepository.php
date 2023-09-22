@@ -39,7 +39,8 @@ class QueueRepository extends AbstractRepository
                 )
             )
             ->setMaxResults($limit)
-            ->orderBy('cache_priority', 'desc')
+            ->orderBy('retries', 'asc')
+            ->addOrderBy('cache_priority', 'desc')
             ->executeQuery()
             ->fetchAllAssociative()
         ;
