@@ -373,7 +373,7 @@ class StaticFileBackend extends StaticDatabaseBackend implements TransientBacken
             // Build Queue Service manually, because here is no DI
             $queueService = GeneralUtility::makeInstance(
                 QueueService::class,
-                GeneralUtility::makeInstance(QueueRepository::class),
+                GeneralUtility::makeInstance(QueueRepository::class, GeneralUtility::makeInstance(ConfigurationService::class)),
                 GeneralUtility::makeInstance(ConfigurationService::class),
                 GeneralUtility::makeInstance(ClientService::class, GeneralUtility::makeInstance(EventDispatcherInterface::class)),
                 GeneralUtility::makeInstance(CacheService::class)
