@@ -52,8 +52,11 @@ class QueueService extends AbstractService
             $priority = $overridePriority;
         }
 
-        $identifiers = GeneralUtility::makeInstance(CacheRepository::class)->findUrlsByIdentifiers($identifiers);
-        $this->addIdentifiersOrIncreaseExisting($identifiers, $priority);
+        $chunks = array_chunk($identifiers, 1000);
+        foreach ($chunks as $chunk) {
+            $chunk = GeneralUtility::makeInstance(CacheRepository::class)->findUrlsByIdentifiers($chunk);
+            $this->addIdentifiersOrIncreaseExisting($chunk, $priority);
+        }
     }
 
     protected function addIdentifiersOrIncreaseExisting(array $identifiers, $priority): void
